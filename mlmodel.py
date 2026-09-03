@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils import data
-torch.set_default_tensor_type('torch.DoubleTensor')
+torch.set_default_dtype(torch.double)
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.dataset import random_split
 
@@ -32,10 +32,10 @@ class Phi_Net(nn.Module):
         x = self.fc4(x)
         if len(x.shape) == 1:
             # single input
-            return torch.cat([x, torch.ones(1)])
+            return torch.cat([x, torch.ones(1,device=x.device)])
         else:
             # batch input for training
-            return torch.cat([x, torch.ones([x.shape[0], 1])], dim=-1)
+            return torch.cat([x, torch.ones([x.shape[0], 1],device=x.device)], dim=-1)
     
 # Cross-entropy loss
 class H_Net_CrossEntropy(nn.Module):
@@ -112,17 +112,18 @@ def validation(phi_net, h_net, adaptinput: np.ndarray, adaptlabel: np.ndarray, v
     adaptinput: K x dim_x numpy, adaptlabel: K x dim_y numpy, valinput: B x dim_x numpy
     output: K x dim_y numpy, B x dim_y numpy, dim_a x dim_y numpy, B x dim_c numpy
     """
+    target=phi_net.fc1.weight.device
     with torch.no_grad():       
         # Perform least squares on the adaptation set to get a
-        X = torch.from_numpy(adaptinput) # K x dim_x
-        Y = torch.from_numpy(adaptlabel) # K x dim_y
+        X = torch.from_numpy(adaptinput).to(target) # K x dim_x
+        Y = torch.from_numpy(adaptlabel).to(target) # K x dim_y
         Phi = phi_net(X) # K x dim_a
         Phi_T = Phi.transpose(0, 1) # dim_a x K
-        A = torch.inverse(torch.mm(Phi_T, Phi) + lam*torch.eye(options['dim_a'])) # dim_a x dim_a
+        A = torch.inverse(torch.mm(Phi_T, Phi) + lam*torch.eye(options['dim_a'],device=target)) # dim_a x dim_a
         a = torch.mm(torch.mm(A, Phi_T), Y) # dim_a x dim_y
         
         # Compute NN prediction for the validation and adaptation sets
-        inputs = torch.from_numpy(valinput) # B x dim_x
+        inputs = torch.from_numpy(valinput).to(target) # B x dim_x
         val_prediction = torch.mm(phi_net(inputs), a) # B x dim_y
         adapt_prediction = torch.mm(phi_net(X), a) # K x dim_y
         
@@ -135,9 +136,9 @@ def validation(phi_net, h_net, adaptinput: np.ndarray, adaptlabel: np.ndarray, v
             if options['loss_type'] == 'crossentropy-loss':
                 # Cross-Entropy
                 h_output = _softmax(h_output)
-            h_output = h_output.numpy()
+            h_output = h_output.cpu().numpy()
     
-    return adapt_prediction.numpy(), val_prediction.numpy(), a.numpy(), h_output
+    return adapt_prediction.cpu().numpy(), val_prediction.cpu().numpy(), a.cpu().numpy(), h_output
 
 def vis_validation(*, t, x, y, phi_net, h_net, idx_adapt_start, idx_adapt_end, idx_val_start, idx_val_end, c, options, lam=0):
     """
