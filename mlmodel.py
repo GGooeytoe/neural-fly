@@ -36,7 +36,47 @@ class Phi_Net(nn.Module):
         else:
             # batch input for training
             return torch.cat([x, torch.ones([x.shape[0], 1],device=x.device)], dim=-1)
-    
+
+class NonDim_Phi_Net(nn.Module):
+    def __init__(self, options,rotor_radius):
+        super(NonDim_Phi_Net, self).__init__(options)
+
+        """
+        given Nx11 tensor data containing [v,quat,pwm] convert to nondimensional numbers
+        Nominally we want the Reynold's number,quat, and tip speed/body speed
+        Since air density and viscosity aren't changing in the test cases, we just normalize v by multiplying by the rotor radius
+        """
+        self.characteristic_area=rotor_radius*rotor_radius
+        self.dim_mat=torch.eye(options['dim_x'],options['dim_x'])
+        self.dim_mat[0,0]=rotor_radius
+        self.dim_mat[1,1]=rotor_radius
+        self.dim_mat[2,2]=rotor_radius
+
+        #actual network
+        self.fc1 = nn.Linear(options['dim_x'], 50)
+        self.fc2 = nn.Linear(50, 60)
+        self.fc3 = nn.Linear(60, 50)
+        # One of the NN outputs is a constant bias term, which is append below
+        self.fc4 = nn.Linear(50, options['dim_a']-1)
+
+    def to(self,*args,**kwargs):
+        self.dim_mat.to(*args,**kwargs)
+        super(self).to(*args,**kwargs)
+        
+    def forward(self, x):
+        x = x@self.dim_mat
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = F.relu(self.fc3(x))
+        x = self.fc4(x)
+        x = self.characteristic_area*x
+        if len(x.shape) == 1:
+            # single input
+            return torch.cat([x, torch.ones(1,device=x.device)])
+        else:
+            # batch input for training
+            return torch.cat([x, torch.ones([x.shape[0], 1],device=x.device)], dim=-1)
+
 # Cross-entropy loss
 class H_Net_CrossEntropy(nn.Module):
     def __init__(self, options):
