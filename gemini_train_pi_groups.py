@@ -282,7 +282,7 @@ def train_model(save_folder_prefix="",data_folder='./data/training',epochs=40, r
 
 if __name__ == '__main__':
     import sys
-    if sys.argc>=2:
+    if len(sys.argv)>2:
         save_folder_prefix=sys.argv[2]
     else:
         save_folder_prefix="train_pi_groups"
