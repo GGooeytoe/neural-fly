@@ -179,7 +179,7 @@ def train_model(save_folder_prefix="",data_folder='./data/training',epochs=40, r
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Training on device: {device}\n")
 
-    model = NonDimFFNN(input_dim=X.shape[1], hidden_dim=64, output_dim=Y_raw.shape[1]).to(device)
+    model = NonDimFFNN(input_dim=X.shape[1], hidden_dim=64, output_dim=Cf_train.shape[1]).to(device)
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
 
