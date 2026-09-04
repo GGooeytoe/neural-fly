@@ -93,16 +93,14 @@ def load_and_nondimensionalize_data(data_folder: str = 'data/experiment'):
             # Non-dimensional force coefficient vector C_f
             q_factor = RHO * v_inf*v_rel_local * (ROTOR_RADIUS ** 2)
 
-            # Feature vector: [pwm (4), log10(abs(Re)) (3), sign(Re) (3)] -> total 10 features
-            x_nondim = np.concatenate([pwm,np.log(np.abs(reynolds_num)),np.sign(reynolds_num)])
+            # Feature vector: [pwm (4), Re (3)] -> total 7 features
+            x_nondim = np.concatenate([pwm,reynolds_num])
 
 
             c_f = fa_local / q_factor
-            log_c_f=np.log(np.abs(c_f))
-            sign_c_f=np.sign(c_f)
 
             X_list.append(x_nondim)
-            C_f_list.append(np.concatenate([log_c_f,sign_c_f]))
+            C_f_list.append(c_f)
             dynamic_pressures_list.append(q_factor)
             raw_forces_list.append(fa_local)
 
@@ -226,7 +224,6 @@ def train_model(save_folder_prefix="",data_folder='./data/training',epochs=40, r
         X_val_tensor = torch.tensor(X_val_scaled, dtype=torch.float32).to(device)
         pred_Cf_scaled = model(X_val_tensor).cpu().numpy()
         pred_Cf = scaler_Cf.inverse_transform(pred_Cf_scaled)
-        pred_Cf=10**pred_Cf[:,0:3]*pred_Cf[:,3:6]
 
     # Reconstruct Physical Aerodynamic Force: f_a = C_f * (rho * V_inf^2 * R^2)
     pred_Fa_reconstructed = np.array([pred_Cf[i] * Q_val[i] for i in range(len(pred_Cf))])
