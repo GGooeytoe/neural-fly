@@ -59,7 +59,7 @@ def load_and_nondimensionalize_data(data_folder: str = 'data/experiment'):
 
     for exp in raw_data:
         v_wind_mag = parse_wind_speed(exp.get('condition', 'nowind'))
-        w_world_vec = np.array([v_wind_mag, 0.0, 0.0])
+        w_world_vec = np.array([-v_wind_mag, 0.0, 0.0])#from figure 3A in the neural fly paper, the wind is in the -x direction
         num_timesteps = len(exp['t'])
 
         for t in range(num_timesteps):
