@@ -89,11 +89,14 @@ def load_and_nondimensionalize_data(data_folder: str = 'data/experiment'):
             # 3. Normalized relative velocity direction vector
             v_hat = v_rel_local / v_rel_local
             w_hat = w_wind_local / v_rel_local
-            # Feature vector: [pwm (4), Re (3), w_wind_hat_local (3)] -> total 10 features
-            x_nondim = np.concatenate([pwm,reynolds_num, w_hat])
 
             # Non-dimensional force coefficient vector C_f
             q_factor = RHO * v_inf*v_rel_local * (ROTOR_RADIUS ** 2)
+
+            # Feature vector: [pwm (4), Re (3), w_wind_hat_local (3), q_factor] -> total 13 features
+            x_nondim = np.concatenate([pwm,reynolds_num, w_hat,q_factor])
+
+
             c_f = fa_local / q_factor
 
             X_list.append(x_nondim)
