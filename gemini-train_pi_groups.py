@@ -144,23 +144,23 @@ def train_model(data_folder='./data/training',epochs=40, random_seed=42):
     Y_val_raw = Y_raw[idx_val]
 
     # 3. Standardize Non-Dimensional Inputs and Outputs
-    # scaler_X = StandardScaler()
-    # scaler_Cf = StandardScaler()
+    scaler_X = StandardScaler()
+    scaler_Cf = StandardScaler()
 
-    # X_train_scaled = scaler_X.fit_transform(X_train)
-    # X_val_scaled = scaler_X.transform(X_val)
+    X_train_scaled = scaler_X.fit_transform(X_train)
+    X_val_scaled = scaler_X.transform(X_val)
 
-    # Cf_train_scaled = scaler_Cf.fit_transform(Cf_train)
-    # Cf_val_scaled = scaler_Cf.transform(Cf_val)
+    Cf_train_scaled = scaler_Cf.fit_transform(Cf_train)
+    Cf_val_scaled = scaler_Cf.transform(Cf_val)
 
     # PyTorch DataLoaders
     train_dataset = TensorDataset(
-        torch.tensor(X_train, dtype=torch.float32),
-        torch.tensor(Cf_train, dtype=torch.float32)
+        torch.tensor(X_train_scaled, dtype=torch.float32),
+        torch.tensor(Cf_train_scaled, dtype=torch.float32)
     )
     val_dataset = TensorDataset(
-        torch.tensor(X_val, dtype=torch.float32),
-        torch.tensor(Cf_val, dtype=torch.float32)
+        torch.tensor(X_val_scaled, dtype=torch.float32),
+        torch.tensor(Cf_val_scaled, dtype=torch.float32)
     )
 
     train_loader = DataLoader(train_dataset, batch_size=256, shuffle=True)
@@ -214,9 +214,9 @@ def train_model(data_folder='./data/training',epochs=40, random_seed=42):
     # 6. Evaluation: Convert predicted drag coefficients back to physical forces (Newtons)
     model.eval()
     with torch.no_grad():
-        X_val_tensor = torch.tensor(X_val, dtype=torch.float32).to(device)
-        pred_Cf = model(X_val_tensor).cpu().numpy()
-        # pred_Cf = scaler_Cf.inverse_transform(pred_Cf_scaled)
+        X_val_tensor = torch.tensor(X_val_scaled, dtype=torch.float32).to(device)
+        pred_Cf_scaled = model(X_val_tensor).cpu().numpy()
+        pred_Cf = scaler_Cf.inverse_transform(pred_Cf_scaled)
 
     # Reconstruct Physical Aerodynamic Force: f_a = C_f * (rho * V_inf^2 * R^2)
     pred_Fa_reconstructed = pred_Cf * Q_val
