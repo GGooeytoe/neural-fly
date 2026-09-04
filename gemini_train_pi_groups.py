@@ -102,7 +102,7 @@ def load_and_nondimensionalize_data(data_folder: str = 'data/experiment'):
             sign_c_f=np.sign(c_f)
 
             X_list.append(x_nondim)
-            C_f_list.append(np.concatenate(log_c_f,sign_c_f))
+            C_f_list.append(np.concatenate([log_c_f,sign_c_f]))
             dynamic_pressures_list.append(q_factor)
             raw_forces_list.append(fa_local)
 
