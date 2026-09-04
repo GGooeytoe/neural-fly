@@ -203,6 +203,13 @@ def train_model(data_folder='./data/training',epochs=40, random_seed=42):
     print(f"Force Y (f_ay): {rmse[1]:.4f} N")
     print(f"Force Z (f_az): {rmse[2]:.4f} N")
 
+    percent_error = np.sqrt(np.mean(((preds_unscaled-Y_val)/Y_val)**2, axis=0))
+
+    print("\n--- Validation Performance RMS(Error/Truth) ---")
+    print(f"Force X (f_ax): {percent_error[0]:.4f}%")
+    print(f"Force Y (f_ay): {percent_error[1]:.4f}%")
+    print(f"Force Z (f_az): {percent_error[2]:.4f}%")
+
     # 7. Visualization
     plt.figure(figsize=(12, 5))
 
