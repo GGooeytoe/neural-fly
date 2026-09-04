@@ -10,6 +10,24 @@ import matplotlib.pyplot as plt
 folder = './data/experiment'
 filename_fields = ['vehicle', 'trajectory', 'method', 'condition']
 
+import git
+import time
+
+def make_timestamped_folder(path_prefix,folder_leading_name=""):
+    timestr=time.strftime("%Y%m%d_%H%M%S")
+    outfolder=os.path.join(path_prefix,folder_leading_name+timestr)
+    os.makedirs(outfolder,exist_ok=True)
+    return outfolder
+def write_README(outfolder,**kwargs):
+    git_repo_path=os.path.join(os.path.dirname(__file__),"..","..")
+    repo=git.Repo(os.path.abspath(git_repo_path))
+    commit_name=repo.head.commit.name_rev
+    with open(os.path.join(outfolder,"README"),"w") as fh:
+        fh.write(f"commit: {commit_name}\n")
+        fh.write(f"commit message: {repo.head.commit.message}")
+        for key,val in kwargs.items():
+            fh.write(f"{key}: {val}\n")
+
 def save_data(Data : List[dict], folder : str, fields=['t', 'p', 'p_d', 'v', 'v_d', 'q', 'R', 'w', 'T_sp', 'q_sp', 'hover_throttle', 'fa', 'pwm']):
     ''' Save {Data} to individual csv files in {folder}, serializing (2+)d ndarrays as lists '''
     if not os.path.isdir(folder):

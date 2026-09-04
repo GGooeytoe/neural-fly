@@ -126,7 +126,11 @@ class NonDimFFNN(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x)
 
-def train_model(data_folder='./data/training',epochs=40, random_seed=42):
+def train_model(save_folder_parent=".",data_folder='./data/training',epochs=40, random_seed=42):
+    outfolder=utils.make_timestamped_folder(save_folder_parent,"train_pi_groups")
+    utils.write_README(outfolder,data_folder=data_folder,epochs=epochs,random_seed=random_seed)
+    import shutil
+    shutil.copy(__file__,os.path.join(outfolder,__file__))
     # Set random seed for reproducibility
     torch.manual_seed(random_seed)
     np.random.seed(random_seed)
@@ -234,6 +238,16 @@ def train_model(data_folder='./data/training',epochs=40, random_seed=42):
     print(f"Force Y (f_ay): {percent_error[1]:.4f}%")
     print(f"Force Z (f_az): {percent_error[2]:.4f}%")
 
+    with open(os.path.join(outfolder,"validation.txt"),"wt") as fh:
+        fh.write("--- Physical Aerodynamic Force Validation (Unscaled RMSE) ---\n")
+        fh.write(f"Force X (f_ax): {rmse_force[0]:.4f} N\n")
+        fh.write(f"Force Y (f_ay): {rmse_force[1]:.4f} N\n")
+        fh.write(f"Force Z (f_az): {rmse_force[2]:.4f} N\n")
+        fh.write("\n--- Validation Performance RMS(Error/Truth) ---")
+        fh.write(f"Force X (f_ax): {percent_error[0]:.4f}%\n")
+        fh.write(f"Force Y (f_ay): {percent_error[1]:.4f}%\n")
+        fh.write(f"Force Z (f_az): {percent_error[2]:.4f}%\n")
+
     # 7. Visualizations
     plt.figure(figsize=(12, 5))
 
@@ -261,7 +275,7 @@ def train_model(data_folder='./data/training',epochs=40, random_seed=42):
     plt.grid(True)
 
     plt.tight_layout()
-    plt.savefig('nondimensional_neural_fly_results.png')
+    plt.savefig(os.path.join(outfolder,'nondimensional_neural_fly_results.png'))
 
 if __name__ == '__main__':
     train_model()
