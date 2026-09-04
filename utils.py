@@ -19,7 +19,7 @@ def make_timestamped_folder(path_prefix,folder_leading_name=""):
     os.makedirs(outfolder,exist_ok=True)
     return outfolder
 def write_README(outfolder,**kwargs):
-    git_repo_path=os.path.join(os.path.dirname(__file__),"..","..")
+    git_repo_path=os.path.join(os.path.dirname(__file__))
     repo=git.Repo(os.path.abspath(git_repo_path))
     commit_name=repo.head.commit.name_rev
     with open(os.path.join(outfolder,"README"),"w") as fh:
