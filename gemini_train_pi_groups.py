@@ -132,6 +132,7 @@ class NonDimFFNN(nn.Module):
 
 def train_model(save_folder_prefix="",data_folder='./data/training',epochs=40, random_seed=42):
     outfolder=utils.make_timestamped_folder("train_pi_groups",save_folder_prefix)
+    print(f"Saving in {outfolder}")
     utils.write_README(outfolder,data_folder=data_folder,epochs=epochs,random_seed=random_seed)
     import shutil
     shutil.copy(__file__,os.path.join(outfolder,__file__))
