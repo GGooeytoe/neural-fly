@@ -243,7 +243,7 @@ def train_model(save_folder_parent=".",data_folder='./data/training',epochs=40, 
         fh.write(f"Force X (f_ax): {rmse_force[0]:.4f} N\n")
         fh.write(f"Force Y (f_ay): {rmse_force[1]:.4f} N\n")
         fh.write(f"Force Z (f_az): {rmse_force[2]:.4f} N\n")
-        fh.write("\n--- Validation Performance RMS(Error/Truth) ---")
+        fh.write("\n--- Validation Performance RMS(Error/Truth) ---\n")
         fh.write(f"Force X (f_ax): {percent_error[0]:.4f}%\n")
         fh.write(f"Force Y (f_ay): {percent_error[1]:.4f}%\n")
         fh.write(f"Force Z (f_az): {percent_error[2]:.4f}%\n")
