@@ -76,7 +76,7 @@ def load_and_nondimensionalize_data(data_folder: str = 'data/experiment'):
 
             # Relative free-stream velocity vector
             v_rel_local = w_wind_local - v_drone_local
-            v_inf = np.linalg_norm(v_rel_local) + EPSILON
+            v_inf = np.linalg.norm(v_rel_local) + EPSILON
 
             # 1. Tip speed ratios (v_tip / V_inf)
             omega = pwm * K_PWM_TO_RADS
