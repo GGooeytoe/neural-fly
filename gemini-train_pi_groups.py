@@ -129,8 +129,8 @@ class NonDimFFNN(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x)
 
-def train_model(save_folder_parent=".",data_folder='./data/training',epochs=40, random_seed=42):
-    outfolder=utils.make_timestamped_folder(save_folder_parent,"train_pi_groups")
+def train_model(save_folder_prefix="",data_folder='./data/training',epochs=40, random_seed=42):
+    outfolder=utils.make_timestamped_folder("train_pi_groups",save_folder_prefix)
     utils.write_README(outfolder,data_folder=data_folder,epochs=epochs,random_seed=random_seed)
     import shutil
     shutil.copy(__file__,os.path.join(outfolder,__file__))
@@ -281,4 +281,9 @@ def train_model(save_folder_parent=".",data_folder='./data/training',epochs=40, 
     plt.savefig(os.path.join(outfolder,'nondimensional_neural_fly_results.png'))
 
 if __name__ == '__main__':
-    train_model()
+    import sys
+    if sys.argc>=2:
+        save_folder_prefix=sys.argv[2]
+    else:
+        save_folder_prefix="train_pi_groups"
+    train_model(save_folder_prefix=save_folder_prefix)
