@@ -262,7 +262,6 @@ def train_model(data_folder='./data/training',epochs=40, random_seed=42):
 
     plt.tight_layout()
     plt.savefig('nondimensional_neural_fly_results.png')
-    plt.show()
 
 if __name__ == '__main__':
     train_model()
