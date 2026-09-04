@@ -126,12 +126,12 @@ class NonDimFFNN(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x)
 
-def train_model():
-    torch.manual_seed(42)
-    np.random.seed(42)
+def train_model(data_folder='./data/training',epochs=40, random_seed=42):
+    # Set random seed for reproducibility
+    torch.manual_seed(random_seed)
+    np.random.seed(random_seed)
 
     # 1. Load non-dimensionalized dataset
-    data_folder = './data/experiment'
     X, C_f, Q, Y_raw = load_and_nondimensionalize_data(data_folder)
 
     # 2. Train-Validation Split
@@ -175,7 +175,6 @@ def train_model():
     optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
 
     # 5. Training Loop
-    epochs = 40
     train_losses, val_losses = [], []
 
     for epoch in range(1, epochs + 1):
