@@ -15,7 +15,7 @@ import utils
 # Physical and Geometric Constants
 RHO = 1.225            # Air density (kg/m^3)
 MU = 1.81e-5           # Dynamic viscosity of air (Pa*s)
-ROTOR_RADIUS = 0.1397   # Rotor radius R (meters, 5.5 inches)
+ROTOR_RADIUS = {"neural-fly":0.1397,"intel":0.115}   # Rotor radius R (meters)
 K_PWM_TO_RADS = 1.0    # TODO: what is this for the drones? Approximate PWM scale factor to rad/s (Omega = k * PWM)
 EPSILON = 1e-4         # Small constant to prevent division by zero
 
@@ -42,7 +42,7 @@ def parse_wind_speed(condition_str: str) -> float:
         return float(match.group(1)) * 0.121
     return 0.0
 
-def load_and_nondimensionalize_data(data_folder: str = 'data/experiment'):
+def load_and_nondimensionalize_data(rotor_radius,data_folder: str = 'data/experiment'):
     """
     Loads experiment data and extracts non-dimensional parameters:
     Inputs:
@@ -80,18 +80,18 @@ def load_and_nondimensionalize_data(data_folder: str = 'data/experiment'):
 
             # 1. Tip speed ratios (v_tip / V_inf)
             omega = pwm * K_PWM_TO_RADS
-            v_tip = omega * ROTOR_RADIUS
+            v_tip = omega * rotor_radius
             lambda_tip = v_tip / v_inf
 
             # 2. Body Reynolds number (Re = rho * V_rel * 2R / mu)
-            reynolds_num = (RHO * v_rel_local * (2.0 * ROTOR_RADIUS)) / MU
+            reynolds_num = (RHO * v_rel_local * (2.0 * rotor_radius)) / MU
 
             # 3. Normalized relative velocity direction vector
             v_hat = v_rel_local / v_rel_local
             w_hat = w_wind_local / v_rel_local
 
             # Non-dimensional force coefficient vector C_f
-            q_factor = RHO * v_inf*v_rel_local * (ROTOR_RADIUS ** 2)
+            q_factor = RHO * v_inf*v_rel_local * (rotor_radius ** 2)
 
             # Feature vector: [pwm (4), Re (3), q_factor (3)] -> total 10 features
             x_nondim = np.concatenate([pwm,reynolds_num,q_factor])
@@ -130,7 +130,7 @@ class NonDimFFNN(nn.Module):
         C_f= self.net(x[...,:7])
         return C_f*x[...,7:]#predict actual force but network just learns C_f
 
-def train_model(save_folder_prefix="",data_folder='./data/training',epochs=40, random_seed=42):
+def train_model(rotor_radius,save_folder_prefix="",data_folder='./data/training',epochs=40, random_seed=42):
     outfolder=utils.make_timestamped_folder("train_pi_groups",save_folder_prefix)
     print(f"Saving in {outfolder}")
     utils.write_README(outfolder,data_folder=data_folder,epochs=epochs,random_seed=random_seed)
@@ -141,7 +141,7 @@ def train_model(save_folder_prefix="",data_folder='./data/training',epochs=40, r
     np.random.seed(random_seed)
 
     # 1. Load non-dimensionalized dataset
-    X, C_f, Q, Y_raw = load_and_nondimensionalize_data(data_folder)
+    X, C_f, Q, Y_raw = load_and_nondimensionalize_data(rotor_radius,data_folder)
 
     # 2. Train-Validation Split
     indices = np.arange(len(X))
@@ -289,4 +289,4 @@ if __name__ == '__main__':
         save_folder_prefix=sys.argv[1]
     else:
         save_folder_prefix="train_pi_groups"
-    train_model(save_folder_prefix=save_folder_prefix)
+    train_model(rotor_radius=ROTOR_RADIUS["neural_fly"],save_folder_prefix=save_folder_prefix,data_folder="./data/training")
