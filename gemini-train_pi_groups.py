@@ -93,7 +93,7 @@ def load_and_nondimensionalize_data(data_folder: str = 'data/experiment'):
             x_nondim = np.concatenate([pwm,reynolds_num, w_hat])
 
             # Non-dimensional force coefficient vector C_f
-            q_factor = RHO * v_inf*v_inf * (ROTOR_RADIUS ** 2)
+            q_factor = RHO * v_inf*v_rel_local * (ROTOR_RADIUS ** 2)
             c_f = fa_local / q_factor
 
             X_list.append(x_nondim)
@@ -103,7 +103,7 @@ def load_and_nondimensionalize_data(data_folder: str = 'data/experiment'):
 
     X = np.array(X_list, dtype=np.float32)
     C_f = np.array(C_f_list, dtype=np.float32)
-    Q = np.array(dynamic_pressures_list, dtype=np.float32).reshape(-1, 1)
+    Q = np.array(dynamic_pressures_list, dtype=np.float32)
     Y_raw = np.array(raw_forces_list, dtype=np.float32)
 
     print(f"Dataset compiled successfully.")
@@ -140,7 +140,7 @@ def train_model(data_folder='./data/training',epochs=40, random_seed=42):
 
     X_train, X_val = X[idx_train], X[idx_val]
     Cf_train, Cf_val = C_f[idx_train], C_f[idx_val]
-    Q_val = Q[idx_val]
+    Q_val = Q[idx_val,...]
     Y_val_raw = Y_raw[idx_val]
 
     # 3. Standardize Non-Dimensional Inputs and Outputs
@@ -219,7 +219,7 @@ def train_model(data_folder='./data/training',epochs=40, random_seed=42):
         pred_Cf = scaler_Cf.inverse_transform(pred_Cf_scaled)
 
     # Reconstruct Physical Aerodynamic Force: f_a = C_f * (rho * V_inf^2 * R^2)
-    pred_Fa_reconstructed = pred_Cf * Q_val
+    pred_Fa_reconstructed = np.array([pred_Cf[i] * Q_val[i] for i in range(len(pred_Cf))])
 
     rmse_force = np.sqrt(np.mean((Y_val_raw - pred_Fa_reconstructed) ** 2, axis=0))
     print("\n--- Physical Aerodynamic Force Validation (Unscaled RMSE) ---")
