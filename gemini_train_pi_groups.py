@@ -93,8 +93,8 @@ def load_and_nondimensionalize_data(data_folder: str = 'data/experiment'):
             # Non-dimensional force coefficient vector C_f
             q_factor = RHO * v_inf*v_rel_local * (ROTOR_RADIUS ** 2)
 
-            # Feature vector: [pwm (4), Re (3)] -> total 7 features
-            x_nondim = np.concatenate([pwm,reynolds_num])
+            # Feature vector: [pwm (4), Re (3), q_factor (3)] -> total 10 features
+            x_nondim = np.concatenate([pwm,reynolds_num,q_factor])
 
 
             c_f = fa_local / q_factor
@@ -127,7 +127,8 @@ class NonDimFFNN(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x)
+        C_f= self.net(x[...,:7])
+        return C_f*x[...,7:]#predict actual force but network just learns C_f
 
 def train_model(save_folder_prefix="",data_folder='./data/training',epochs=40, random_seed=42):
     outfolder=utils.make_timestamped_folder("train_pi_groups",save_folder_prefix)
@@ -144,30 +145,31 @@ def train_model(save_folder_prefix="",data_folder='./data/training',epochs=40, r
     # 2. Train-Validation Split
     indices = np.arange(len(X))
     idx_train, idx_val = train_test_split(indices, test_size=0.2, random_state=42)
+    labels=Y_raw
 
     X_train, X_val = X[idx_train], X[idx_val]
-    Cf_train, Cf_val = C_f[idx_train], C_f[idx_val]
+    label_train, label_val = labels[idx_train], labels[idx_val]
     Q_val = Q[idx_val,...]
     Y_val_raw = Y_raw[idx_val]
 
     # 3. Standardize Non-Dimensional Inputs and Outputs
     scaler_X = StandardScaler()
-    scaler_Cf = StandardScaler()
+    scaler_label = StandardScaler()
 
     X_train_scaled = scaler_X.fit_transform(X_train)
     X_val_scaled = scaler_X.transform(X_val)
 
-    Cf_train_scaled = scaler_Cf.fit_transform(Cf_train)
-    Cf_val_scaled = scaler_Cf.transform(Cf_val)
+    label_train_scaled = scaler_label.fit_transform(label_train)
+    label_val_scaled = scaler_label.transform(label_val)
 
     # PyTorch DataLoaders
     train_dataset = TensorDataset(
         torch.tensor(X_train_scaled, dtype=torch.float32),
-        torch.tensor(Cf_train_scaled, dtype=torch.float32)
+        torch.tensor(label_train_scaled, dtype=torch.float32)
     )
     val_dataset = TensorDataset(
         torch.tensor(X_val_scaled, dtype=torch.float32),
-        torch.tensor(Cf_val_scaled, dtype=torch.float32)
+        torch.tensor(label_val_scaled, dtype=torch.float32)
     )
 
     train_loader = DataLoader(train_dataset, batch_size=256, shuffle=True)
@@ -177,7 +179,7 @@ def train_model(save_folder_prefix="",data_folder='./data/training',epochs=40, r
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Training on device: {device}\n")
 
-    model = NonDimFFNN(input_dim=X.shape[1], hidden_dim=64, output_dim=Cf_train.shape[1]).to(device)
+    model = NonDimFFNN(input_dim=X.shape[1], hidden_dim=64, output_dim=label_train.shape[1]).to(device)
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
 
@@ -222,11 +224,11 @@ def train_model(save_folder_prefix="",data_folder='./data/training',epochs=40, r
     model.eval()
     with torch.no_grad():
         X_val_tensor = torch.tensor(X_val_scaled, dtype=torch.float32).to(device)
-        pred_Cf_scaled = model(X_val_tensor).cpu().numpy()
-        pred_Cf = scaler_Cf.inverse_transform(pred_Cf_scaled)
+        pred_f_scaled = model(X_val_tensor).cpu().numpy()
+        pred_Fa_reconstructed = scaler_label.inverse_transform(pred_f_scaled)
 
     # Reconstruct Physical Aerodynamic Force: f_a = C_f * (rho * V_inf^2 * R^2)
-    pred_Fa_reconstructed = np.array([pred_Cf[i] * Q_val[i] for i in range(len(pred_Cf))])
+    # pred_Fa_reconstructed = np.array([pred_Cf[i] * Q_val[i] for i in range(len(pred_Cf))])
 
     rmse_force = np.sqrt(np.mean((Y_val_raw - pred_Fa_reconstructed) ** 2, axis=0))
     print("\n--- Physical Aerodynamic Force Validation (Unscaled RMSE) ---")
