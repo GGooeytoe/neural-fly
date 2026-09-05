@@ -292,6 +292,14 @@ def validate_model(model,scaler_label,X_val_scaled,Y_val_raw,device):
     print(f"Force Z (f_az): {percent_error[2]:.4f}%")
     return pred_Fa_reconstructed,rmse_force,percent_error
 
+def test_model(model,scaler_X,scaler_label,X_raw,Y_raw):
+    X_scaled=scaler_X.transform(X_raw)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    return validate_model(model,scaler_label,X_scaled,Y_raw,device)
+
+def test_model_on_dataset(model,scaler_X,scaler_label,data_folder,rotor_radius):
+    X, C_f, Q, Y_raw = load_and_nondimensionalize_data(rotor_radius,data_folder)
+    return test_model(model,scaler_X,scaler_label,X,Y_raw)
 if __name__ == '__main__':
     import sys
     if len(sys.argv)>1:
