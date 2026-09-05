@@ -199,7 +199,7 @@ def train_model(rotor_radius,save_folder_prefix="",data_folder='./data/training'
 
     # 2. Train-Validation Split
     indices = np.arange(len(X))
-    idx_train, idx_val = train_test_split(indices, test_size=0.2, random_state=42)
+    idx_train, idx_val = train_test_split(indices, test_size=0.2, random_state=random_seed)
     labels=Y_raw
 
     X_train, X_val = X[idx_train], X[idx_val]
@@ -321,6 +321,162 @@ def train_model(rotor_radius,save_folder_prefix="",data_folder='./data/training'
     plt.savefig(os.path.join(outfolder,'nondimensional_neural_fly_results.png'))
 
     return model,scaler_X,scaler_label
+
+
+# Define Simple Feedforward Neural Network
+class FeedforwardNN(nn.Module):
+    def __init__(self, input_dim: int = 10, hidden_dim: int = 64, output_dim: int = 3):
+        super(FeedforwardNN, self).__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
+            nn.Linear(hidden_dim // 2, output_dim)
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.net(x)
+
+def train_dimensional_model(save_folder_prefix="",data_folder='./data/training',epochs=40, random_seed=42):
+    outfolder=utils.make_timestamped_folder("train_dimensional",save_folder_prefix)
+    print(f"Saving in {outfolder}")
+    utils.write_README(outfolder,data_folder=data_folder,epochs=epochs,random_seed=random_seed)
+    import shutil
+    shutil.copy(__file__,os.path.join(outfolder,os.path.basename(__file__)))
+    # Set random seed for reproducibility
+    torch.manual_seed(random_seed)
+    np.random.seed(random_seed)
+
+    # 1. Load and process dataset
+    X, Y = load_and_preprocess_data(data_folder)
+
+    # 2. Train-Validation Split (80% Train, 20% Validation)
+    X_train, X_val, Y_train, Y_val = train_test_split(
+        X, Y, test_size=0.2, random_state=random_seed
+    )
+
+    # 3. Standardize inputs and targets
+    scaler_X = StandardScaler()
+    scaler_Y = StandardScaler()
+
+    X_train_scaled = scaler_X.fit_transform(X_train)
+    X_val_scaled = scaler_X.transform(X_val)
+
+    Y_train_scaled = scaler_Y.fit_transform(Y_train)
+    Y_val_scaled = scaler_Y.transform(Y_val)
+
+    # PyTorch DataLoaders
+    train_dataset = TensorDataset(
+        torch.tensor(X_train_scaled, dtype=torch.float32),
+        torch.tensor(Y_train_scaled, dtype=torch.float32)
+    )
+    val_dataset = TensorDataset(
+        torch.tensor(X_val_scaled, dtype=torch.float32),
+        torch.tensor(Y_val_scaled, dtype=torch.float32)
+    )
+
+    train_loader = DataLoader(train_dataset, batch_size=256, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=256, shuffle=False)
+
+    # 4. Initialize Network, Loss Function, and Optimizer
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Training on device: {device}\n")
+
+    model = FeedforwardNN(input_dim=10, hidden_dim=64, output_dim=3).to(device)
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
+
+    # 5. Training Loop
+    train_losses, val_losses = [], []
+
+    for epoch in range(1, epochs + 1):
+        model.train()
+        running_train_loss = 0.0
+
+        for batch_x, batch_y in train_loader:
+            batch_x, batch_y = batch_x.to(device), batch_y.to(device)
+
+            optimizer.zero_grad()
+            preds = model(batch_x)
+            loss = criterion(preds, batch_y)
+            loss.backward()
+            optimizer.step()
+
+            running_train_loss += loss.item() * batch_x.size(0)
+
+        epoch_train_loss = running_train_loss / len(train_dataset)
+        train_losses.append(epoch_train_loss)
+
+        # Validation step
+        model.eval()
+        running_val_loss = 0.0
+        with torch.no_grad():
+            for batch_x, batch_y in val_loader:
+                batch_x, batch_y = batch_x.to(device), batch_y.to(device)
+                preds = model(batch_x)
+                loss = criterion(preds, batch_y)
+                running_val_loss += loss.item() * batch_x.size(0)
+
+        epoch_val_loss = running_val_loss / len(val_dataset)
+        val_losses.append(epoch_val_loss)
+
+        if epoch % 5 == 0 or epoch == 1:
+            print(f"Epoch [{epoch:02d}/{epochs:02d}] - Train Loss: {epoch_train_loss:.6f} | Val Loss: {epoch_val_loss:.6f}")
+
+    # 6. Model Performance Evaluation (Unscaled Metrics)
+    model.eval()
+    with torch.no_grad():
+        X_val_tensor = torch.tensor(X_val_scaled, dtype=torch.float32).to(device)
+        preds_scaled = model(X_val_tensor).cpu().numpy()
+        preds_unscaled = scaler_Y.inverse_transform(preds_scaled)
+
+    rmse = np.sqrt(np.mean((Y_val - preds_unscaled) ** 2, axis=0))
+    print("\n--- Validation Performance (Unscaled RMSE) ---")
+    print(f"Force X (f_ax): {rmse[0]:.4f} N")
+    print(f"Force Y (f_ay): {rmse[1]:.4f} N")
+    print(f"Force Z (f_az): {rmse[2]:.4f} N")
+
+    percent_error = np.sqrt(np.mean(((preds_unscaled-Y_val)/Y_val)**2, axis=0))
+
+    print("\n--- Validation Performance RMS(Error/Truth) ---")
+    print(f"Force X (f_ax): {percent_error[0]:.4f}%")
+    print(f"Force Y (f_ay): {percent_error[1]:.4f}%")
+    print(f"Force Z (f_az): {percent_error[2]:.4f}%")
+
+    # 7. Visualization
+    plt.figure(figsize=(12, 5))
+
+    # Loss Curve Plot
+    plt.subplot(1, 2, 1)
+    plt.plot(train_losses, label='Train Loss')
+    plt.plot(val_losses, label='Validation Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('MSE Loss (Normalized)')
+    plt.title('Training & Validation Loss')
+    plt.legend()
+    plt.grid(True)
+
+    # Force Prediction Comparison Plot (First 150 validation samples)
+    plt.subplot(1, 2, 2)
+    sample_indices = np.arange(150)
+    plt.plot(Y_val[sample_indices, 0], 'r--', label='True f_ax')
+    plt.plot(preds_unscaled[sample_indices, 0], 'r-', label='Pred f_ax')
+    plt.plot(Y_val[sample_indices, 1], 'g--', label='True f_ay')
+    plt.plot(preds_unscaled[sample_indices, 1], 'g-', label='Pred f_ay')
+    plt.plot(Y_val[sample_indices, 2], 'b--', label='True f_az')
+    plt.plot(preds_unscaled[sample_indices, 2], 'b-', label='Pred f_az')
+    plt.xlabel('Sample Index')
+    plt.ylabel('Force (N)')
+    plt.title('Predicted vs Ground Truth Local Aerodynamic Forces')
+    plt.legend()
+    plt.grid(True)
+
+    plt.tight_layout()
+    plt.savefig('neural_fly_ffnn_results.png')
+    plt.show()
 
 def validate_model(model,scaler_label,X_val_scaled,Y_val_raw,device):
     model.eval()
