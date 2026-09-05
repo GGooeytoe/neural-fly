@@ -465,7 +465,7 @@ def train_dimensional_model(save_folder_prefix="",data_folder='./data/training',
     plt.grid(True)
 
     plt.tight_layout()
-    plt.savefig('neural_fly_ffnn_results.png')
+    plt.savefig(os.path.join(outfolder,'neural_fly_ffnn_results.png'))
 
     return model,scaler_X,scaler_Y
 
