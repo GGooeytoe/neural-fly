@@ -8,7 +8,7 @@ from torch.utils.data import TensorDataset, DataLoader
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
-
+import pickle
 # Import the repository's helper module
 import utils
 
@@ -220,6 +220,9 @@ def train_model(rotor_radius,save_folder_prefix="",data_folder='./data/training'
 
         if epoch % 5 == 0 or epoch == 1:
             print(f"Epoch [{epoch:02d}/{epochs:02d}] - Train Loss (Scaled C_f): {epoch_train_loss:.6f} | Val Loss: {epoch_val_loss:.6f}")
+    to_save={"state_dict":model.state_dict(),"scaler_X":scaler_X,"scaler_label":scaler_label}
+    with open(os.path.join(outfolder,"model.pkl"),"wb") as fh:
+        pickle.dump(to_save,fh)
 
     # 6. Evaluation: Convert predicted drag coefficients back to physical forces (Newtons)
     pred_Fa_reconstructed,rmse_force,percent_error=validate_model(model,scaler_label,X_val_scaled,Y_val_raw,device)
@@ -263,6 +266,8 @@ def train_model(rotor_radius,save_folder_prefix="",data_folder='./data/training'
     plt.tight_layout()
     plt.savefig(os.path.join(outfolder,'nondimensional_neural_fly_results.png'))
 
+    return model,scaler_X,scaler_label
+
 def validate_model(model,scaler_label,X_val_scaled,Y_val_raw,device):
     model.eval()
     with torch.no_grad():
@@ -286,6 +291,7 @@ def validate_model(model,scaler_label,X_val_scaled,Y_val_raw,device):
     print(f"Force Y (f_ay): {percent_error[1]:.4f}%")
     print(f"Force Z (f_az): {percent_error[2]:.4f}%")
     return pred_Fa_reconstructed,rmse_force,percent_error
+
 if __name__ == '__main__':
     import sys
     if len(sys.argv)>1:
