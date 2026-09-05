@@ -306,4 +306,4 @@ if __name__ == '__main__':
         save_folder_prefix=sys.argv[1]
     else:
         save_folder_prefix="train_pi_groups"
-    train_model(rotor_radius=ROTOR_RADIUS["neural_fly"],save_folder_prefix=save_folder_prefix,data_folder="./data/training")
+    train_model(rotor_radius=ROTOR_RADIUS["neural-fly"],save_folder_prefix=save_folder_prefix,data_folder="./data/training")
