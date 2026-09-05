@@ -222,27 +222,7 @@ def train_model(rotor_radius,save_folder_prefix="",data_folder='./data/training'
             print(f"Epoch [{epoch:02d}/{epochs:02d}] - Train Loss (Scaled C_f): {epoch_train_loss:.6f} | Val Loss: {epoch_val_loss:.6f}")
 
     # 6. Evaluation: Convert predicted drag coefficients back to physical forces (Newtons)
-    model.eval()
-    with torch.no_grad():
-        X_val_tensor = torch.tensor(X_val_scaled, dtype=torch.float32).to(device)
-        pred_f_scaled = model(X_val_tensor).cpu().numpy()
-        pred_Fa_reconstructed = scaler_label.inverse_transform(pred_f_scaled)
-
-    # Reconstruct Physical Aerodynamic Force: f_a = C_f * (rho * V_inf^2 * R^2)
-    # pred_Fa_reconstructed = np.array([pred_Cf[i] * Q_val[i] for i in range(len(pred_Cf))])
-
-    rmse_force = np.sqrt(np.mean((Y_val_raw - pred_Fa_reconstructed) ** 2, axis=0))
-    print("\n--- Physical Aerodynamic Force Validation (Unscaled RMSE) ---")
-    print(f"Force X (f_ax): {rmse_force[0]:.4f} N")
-    print(f"Force Y (f_ay): {rmse_force[1]:.4f} N")
-    print(f"Force Z (f_az): {rmse_force[2]:.4f} N")
-
-    percent_error = np.sqrt(np.mean(((pred_Fa_reconstructed-Y_val_raw)/Y_val_raw)**2, axis=0))
-
-    print("\n--- Validation Performance RMS(Error/Truth) ---")
-    print(f"Force X (f_ax): {percent_error[0]:.4f}%")
-    print(f"Force Y (f_ay): {percent_error[1]:.4f}%")
-    print(f"Force Z (f_az): {percent_error[2]:.4f}%")
+    pred_Fa_reconstructed,rmse_force,percent_error=validate_model(model,scaler_label,X_val_scaled,Y_val_raw,device)
 
     with open(os.path.join(outfolder,"validation.txt"),"wt") as fh:
         fh.write("--- Physical Aerodynamic Force Validation (Unscaled RMSE) ---\n")
@@ -283,6 +263,29 @@ def train_model(rotor_radius,save_folder_prefix="",data_folder='./data/training'
     plt.tight_layout()
     plt.savefig(os.path.join(outfolder,'nondimensional_neural_fly_results.png'))
 
+def validate_model(model,scaler_label,X_val_scaled,Y_val_raw,device):
+    model.eval()
+    with torch.no_grad():
+        X_val_tensor = torch.tensor(X_val_scaled, dtype=torch.float32).to(device)
+        pred_f_scaled = model(X_val_tensor).cpu().numpy()
+        pred_Fa_reconstructed = scaler_label.inverse_transform(pred_f_scaled)
+
+    # Reconstruct Physical Aerodynamic Force: f_a = C_f * (rho * V_inf^2 * R^2)
+    # pred_Fa_reconstructed = np.array([pred_Cf[i] * Q_val[i] for i in range(len(pred_Cf))])
+
+    rmse_force = np.sqrt(np.mean((Y_val_raw - pred_Fa_reconstructed) ** 2, axis=0))
+    print("\n--- Physical Aerodynamic Force Validation (Unscaled RMSE) ---")
+    print(f"Force X (f_ax): {rmse_force[0]:.4f} N")
+    print(f"Force Y (f_ay): {rmse_force[1]:.4f} N")
+    print(f"Force Z (f_az): {rmse_force[2]:.4f} N")
+
+    percent_error = np.sqrt(np.mean(((pred_Fa_reconstructed-Y_val_raw)/Y_val_raw)**2, axis=0))
+
+    print("\n--- Validation Performance RMS(Error/Truth) ---")
+    print(f"Force X (f_ax): {percent_error[0]:.4f}%")
+    print(f"Force Y (f_ay): {percent_error[1]:.4f}%")
+    print(f"Force Z (f_az): {percent_error[2]:.4f}%")
+    return pred_Fa_reconstructed,rmse_force,percent_error
 if __name__ == '__main__':
     import sys
     if len(sys.argv)>1:
