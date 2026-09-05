@@ -42,6 +42,60 @@ def parse_wind_speed(condition_str: str) -> float:
         return float(match.group(1)) * 0.121
     return 0.0
 
+def load_and_preprocess_data(data_folder: str = 'data/experiment'):
+    """
+    Loads Neural-Fly experiment data and converts world frame variables 
+    to the drone's local body frame. Use for dimensional training as opposed to nondimensionalized
+    
+    Returns:
+        X: Inputs [local_wind (3), local_velocity (3), pwm (4)] -> Shape (N, 10)
+        Y: Target [local_aerodynamic_force (3)]             -> Shape (N, 3)
+    """
+    print(f"Loading data from '{data_folder}'...")
+    raw_data = utils.load_data(folder=data_folder)
+    print(f"Loaded {len(raw_data)} experiment runs.")
+
+    X_list, Y_list = [], []
+
+    for exp in raw_data:
+        # Get world-frame wind vector [vx, vy, vz]
+        v_wind_mag = parse_wind_speed(exp.get('condition', 'nowind'))
+        w_world_vec = np.array([-v_wind_mag, 0.0, 0.0])
+
+        num_timesteps = len(exp['t'])
+
+        for t in range(num_timesteps):
+            # Extract rotation matrix R (Body -> World frame)
+            R = exp['R'][t]
+            if R.shape == (9,):
+                R = R.reshape(3, 3)
+            
+            # Transpose of R maps World frame -> Body (Local) frame
+            R_T = R.T  
+
+            # Extract world frame quantities & motor PWM
+            v_world = exp['v'][t]          # Drone velocity in world frame (3D)
+            fa_world = exp['fa'][t]        # Aerodynamic force in world frame (3D)
+            pwm = exp['pwm'][t]            # Motor PWM commands (4D)
+
+            # Transform vectors to local frame
+            w_local = R_T @ w_world_vec    # Local wind speed vector (3D)
+            v_local = R_T @ v_world        # Local drone velocity vector (3D)
+            fa_local = R_T @ fa_world      # Local aerodynamic force vector (3D)
+
+            # Feature vector: [wind_local (3), v_local (3), pwm (4)]
+            x_feat = np.concatenate([w_local, v_local, pwm])
+
+            X_list.append(x_feat)
+            Y_list.append(fa_local)
+
+    X = np.array(X_list, dtype=np.float32)
+    Y = np.array(Y_list, dtype=np.float32)
+
+    print(f"Dataset compiled successfully.")
+    print(f"Input features shape: {X.shape} | Target force shape: {Y.shape}")
+    return X, Y
+
 def load_and_nondimensionalize_data(rotor_radius,data_folder: str = 'data/experiment'):
     """
     Loads experiment data and extracts non-dimensional parameters:
