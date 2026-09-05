@@ -427,56 +427,47 @@ def train_dimensional_model(save_folder_prefix="",data_folder='./data/training',
             print(f"Epoch [{epoch:02d}/{epochs:02d}] - Train Loss: {epoch_train_loss:.6f} | Val Loss: {epoch_val_loss:.6f}")
 
     # 6. Model Performance Evaluation (Unscaled Metrics)
-    model.eval()
-    with torch.no_grad():
-        X_val_tensor = torch.tensor(X_val_scaled, dtype=torch.float32).to(device)
-        preds_scaled = model(X_val_tensor).cpu().numpy()
-        preds_unscaled = scaler_Y.inverse_transform(preds_scaled)
-
-    rmse = np.sqrt(np.mean((Y_val - preds_unscaled) ** 2, axis=0))
-    print("\n--- Validation Performance (Unscaled RMSE) ---")
-    print(f"Force X (f_ax): {rmse[0]:.4f} N")
-    print(f"Force Y (f_ay): {rmse[1]:.4f} N")
-    print(f"Force Z (f_az): {rmse[2]:.4f} N")
-
-    percent_error = np.sqrt(np.mean(((preds_unscaled-Y_val)/Y_val)**2, axis=0))
-
-    print("\n--- Validation Performance RMS(Error/Truth) ---")
-    print(f"Force X (f_ax): {percent_error[0]:.4f}%")
-    print(f"Force Y (f_ay): {percent_error[1]:.4f}%")
-    print(f"Force Z (f_az): {percent_error[2]:.4f}%")
+    pred_Fa_reconstructed,rmse_force,percent_error=validate_model(model,scaler_Y,X_val_scaled,Y_val,device)
+    with open(os.path.join(outfolder,"validation.txt"),"wt") as fh:
+        fh.write("--- Physical Aerodynamic Force Validation (Unscaled RMSE) ---\n")
+        fh.write(f"Force X (f_ax): {rmse_force[0]:.4f} N\n")
+        fh.write(f"Force Y (f_ay): {rmse_force[1]:.4f} N\n")
+        fh.write(f"Force Z (f_az): {rmse_force[2]:.4f} N\n")
+        fh.write("\n--- Validation Performance RMS(Error/Truth) ---\n")
+        fh.write(f"Force X (f_ax): {percent_error[0]:.4f}%\n")
+        fh.write(f"Force Y (f_ay): {percent_error[1]:.4f}%\n")
+        fh.write(f"Force Z (f_az): {percent_error[2]:.4f}%\n")
 
     # 7. Visualization
     plt.figure(figsize=(12, 5))
 
-    # Loss Curve Plot
     plt.subplot(1, 2, 1)
     plt.plot(train_losses, label='Train Loss')
     plt.plot(val_losses, label='Validation Loss')
     plt.xlabel('Epoch')
-    plt.ylabel('MSE Loss (Normalized)')
-    plt.title('Training & Validation Loss')
+    plt.ylabel('MSE Loss (Scaled f)')
+    plt.title('Dimensional Model Loss')
     plt.legend()
     plt.grid(True)
 
-    # Force Prediction Comparison Plot (First 150 validation samples)
     plt.subplot(1, 2, 2)
     sample_indices = np.arange(150)
     plt.plot(Y_val[sample_indices, 0], 'r--', label='True f_ax')
-    plt.plot(preds_unscaled[sample_indices, 0], 'r-', label='Pred f_ax')
+    plt.plot(pred_Fa_reconstructed[sample_indices, 0], 'r-', label='Pred f_ax')
     plt.plot(Y_val[sample_indices, 1], 'g--', label='True f_ay')
-    plt.plot(preds_unscaled[sample_indices, 1], 'g-', label='Pred f_ay')
+    plt.plot(pred_Fa_reconstructed[sample_indices, 1], 'g-', label='Pred f_ay')
     plt.plot(Y_val[sample_indices, 2], 'b--', label='True f_az')
-    plt.plot(preds_unscaled[sample_indices, 2], 'b-', label='Pred f_az')
+    plt.plot(pred_Fa_reconstructed[sample_indices, 2], 'b-', label='Pred f_az')
     plt.xlabel('Sample Index')
-    plt.ylabel('Force (N)')
-    plt.title('Predicted vs Ground Truth Local Aerodynamic Forces')
+    plt.ylabel('Reconstructed Force (N)')
+    plt.title('Reconstructed Physical Force vs Ground Truth')
     plt.legend()
     plt.grid(True)
 
     plt.tight_layout()
     plt.savefig('neural_fly_ffnn_results.png')
-    plt.show()
+
+    return model,scaler_X,scaler_Y
 
 def validate_model(model,scaler_label,X_val_scaled,Y_val_raw,device):
     model.eval()
@@ -510,6 +501,10 @@ def test_model(model,scaler_X,scaler_label,X_raw,Y_raw):
 def test_model_on_dataset(model,scaler_X,scaler_label,data_folder,rotor_radius):
     X, C_f, Q, Y_raw = load_and_nondimensionalize_data(rotor_radius,data_folder)
     return test_model(model,scaler_X,scaler_label,X,Y_raw)
+
+def test_dimensional_model_on_dataset(model,scaler_X,scaler_label,data_folder):
+    X, Y = load_and_preprocess_data(data_folder)
+    return test_model(model,scaler_X,scaler_label,X,Y)
 if __name__ == '__main__':
     import sys
     if len(sys.argv)>1:
