@@ -320,7 +320,7 @@ def train_model(rotor_radius,save_folder_prefix="",data_folder='./data/training'
     plt.tight_layout()
     plt.savefig(os.path.join(outfolder,'nondimensional_neural_fly_results.png'))
 
-    return model,scaler_X,scaler_label
+    return model,scaler_X,scaler_label,outfolder
 
 
 # Define Simple Feedforward Neural Network
@@ -467,7 +467,7 @@ def train_dimensional_model(save_folder_prefix="",data_folder='./data/training',
     plt.tight_layout()
     plt.savefig(os.path.join(outfolder,'neural_fly_ffnn_results.png'))
 
-    return model,scaler_X,scaler_Y
+    return model,scaler_X,scaler_Y,outfolder
 
 def validate_model(model,scaler_label,X_val_scaled,Y_val_raw,device):
     model.eval()
