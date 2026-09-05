@@ -135,7 +135,7 @@ def train_model(rotor_radius,save_folder_prefix="",data_folder='./data/training'
     print(f"Saving in {outfolder}")
     utils.write_README(outfolder,data_folder=data_folder,epochs=epochs,random_seed=random_seed)
     import shutil
-    shutil.copy(__file__,os.path.join(outfolder,__file__))
+    shutil.copy(__file__,os.path.join(outfolder,os.path.basename(__file__)))
     # Set random seed for reproducibility
     torch.manual_seed(random_seed)
     np.random.seed(random_seed)
