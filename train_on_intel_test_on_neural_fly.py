@@ -1,7 +1,7 @@
 import gemini_train_pi_groups
 import os
 
-epochs=100
+epochs=200
 model,scaler_X,scaler_label,outfolder=gemini_train_pi_groups.train_model(rotor_radius=gemini_train_pi_groups.ROTOR_RADIUS["intel"],save_folder_prefix=f"train{epochs}epochs_intel_and_save",data_folder="./data/training-transfer",epochs=epochs)
 pred,rmse,percent=gemini_train_pi_groups.test_model_on_dataset(model,scaler_X,scaler_label,"./data/training/",gemini_train_pi_groups.ROTOR_RADIUS["neural-fly"])
 
