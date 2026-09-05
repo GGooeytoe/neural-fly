@@ -56,7 +56,7 @@ def load_and_preprocess_data(data_folder: str = 'data/experiment'):
     for exp in raw_data:
         # Get world-frame wind vector [vx, vy, vz]
         v_wind_mag = parse_wind_speed(exp.get('condition', 'nowind'))
-        w_world_vec = np.array([v_wind_mag, 0.0, 0.0])
+        w_world_vec = np.array([-v_wind_mag, 0.0, 0.0])
 
         num_timesteps = len(exp['t'])
 
