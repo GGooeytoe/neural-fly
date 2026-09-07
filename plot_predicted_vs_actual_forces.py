@@ -23,10 +23,10 @@ def plot_dimensional_model_on_dataset(model,scaler_X,scaler_label,data_folder,ax
     X, Y_raw = gemini_train_pi_groups.load_and_preprocess_data(data_folder)
     plot_predicted_versus_actual(X,Y_raw,model,scaler_X,scaler_label,axes)
 
-def load_model(pickle_path,model_class):
+def load_model(pickle_path,model_obj):
     with open(pickle_path,"rb") as fh:
         data_dict=pickle.load(fh)
-    model=model_class.load_state_dict(data_dict["state_dict"])
+    model=model_obj.load_state_dict(data_dict["state_dict"])
     scaler_X=data_dict["scaler_X"]
     scaler_label=data_dict["scaler_label"]
     return model,scaler_X,scaler_label
@@ -42,8 +42,12 @@ if __name__=="__main__":
     timestr=time.strftime("%Y%m%d_%H%M%S")
     figname=f"nondim_versus_dim_100epochs_transfer_to_{data_drone}_{timestr}.png"
 
-    nondim_model,nondim_scaler_X,nondim_scaler_label=load_model(nondim_model_path,gemini_train_pi_groups.NonDimFFNN)
-    dim_model,dim_scaler_X,dim_scaler_label=load_model(dim_model_path,gemini_train_pi_groups.FeedforwardNN)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    nondim_model=gemini_train_pi_groups.NonDimFFNN(input_dim=7, hidden_dim=64, output_dim=3).to(device)
+    nondim_model,nondim_scaler_X,nondim_scaler_label=load_model(nondim_model_path,nondim_model)
+
+    dim_model = gemini_train_pi_groups.FeedforwardNN(input_dim=10, hidden_dim=64, output_dim=3).to(device)
+    dim_model,dim_scaler_X,dim_scaler_label=load_model(dim_model_path,dim_model)
 
     fig1=pyplot.figure()
     axes1=fig1.subplots(3,2)
