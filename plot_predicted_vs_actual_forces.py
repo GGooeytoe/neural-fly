@@ -10,8 +10,8 @@ def plot_predicted_versus_actual(X,Y,model,scaler_X,scaler_label,axes,name,plot_
     dims=["x","y","z"]
     for i,ax in enumerate(axes):
         if plot_truth:
-            ax.plot(Y[:,i],"o",label="Observed")
-        ax.plot(pred_Fa_reconstructed[:,i],"x:",label=name)
+            ax.plot(Y[:,i],label="Observed")
+        ax.plot(pred_Fa_reconstructed[:,i],":",label=name)
         ax.set_ylabel(f"F_{dims[i]} (N)")
         ax.set_xlabel("Sample")
         ax.legend()
