@@ -26,10 +26,10 @@ def plot_dimensional_model_on_dataset(model,scaler_X,scaler_label,data_folder,ax
 def load_model(pickle_path,model_obj):
     with open(pickle_path,"rb") as fh:
         data_dict=pickle.load(fh)
-    model=model_obj.load_state_dict(data_dict["state_dict"])
+    key_matches=model_obj.load_state_dict(data_dict["state_dict"])
     scaler_X=data_dict["scaler_X"]
     scaler_label=data_dict["scaler_label"]
-    return model,scaler_X,scaler_label
+    return key_matches,scaler_X,scaler_label
 
 if __name__=="__main__":
     nondim_model_path="train_pi_groups/train100epochs_and_save20260907_140431/model.pkl"
@@ -44,10 +44,10 @@ if __name__=="__main__":
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     nondim_model=gemini_train_pi_groups.NonDimFFNN(input_dim=7, hidden_dim=64, output_dim=3).to(device)
-    nondim_model,nondim_scaler_X,nondim_scaler_label=load_model(nondim_model_path,nondim_model)
+    nondim_key_matchs,nondim_scaler_X,nondim_scaler_label=load_model(nondim_model_path,nondim_model)
 
     dim_model = gemini_train_pi_groups.FeedforwardNN(input_dim=10, hidden_dim=64, output_dim=3).to(device)
-    dim_model,dim_scaler_X,dim_scaler_label=load_model(dim_model_path,dim_model)
+    dim_key_matchs,dim_scaler_X,dim_scaler_label=load_model(dim_model_path,dim_model)
 
     fig1=pyplot.figure()
     axes1=fig1.subplots(3,2)
