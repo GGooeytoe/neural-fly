@@ -52,7 +52,7 @@ if __name__=="__main__":
     fig1=pyplot.figure()
     axes1=fig1.subplots(3,2)
     plot_model_on_dataset(nondim_model,nondim_scaler_X,nondim_scaler_label,data_folder,rotor_radius,pwm_hover,axes1[:,0])
-    plot_dimensional_model_on_dataset(dim_model,dim_scaler_X,dim_scaler_label,data_folder)
+    plot_dimensional_model_on_dataset(dim_model,dim_scaler_X,dim_scaler_label,data_folder,axes1[:,1])
     fig1.set_size_inches(6.5,6)
     fig1.tight_layout()
     fig1.savefig(figname)
