@@ -37,7 +37,7 @@ def load_model(pickle_path,model_obj):
 
 if __name__=="__main__":
     nondim_model_path="train_pi_groups/train100epochs_and_save20260907_140431/model.pkl"
-    dim_model_path="train_dimensional/train100epochs_and_save20260907_161346/model.pkl"
+    dim_model_path="train_dimensional/train100epochs_and_save20260907_174222/model.pkl"
     data_folder="data/training-transfer"
     data_drone="intel"
     interval=(0,5000)
