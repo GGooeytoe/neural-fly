@@ -51,5 +51,6 @@ if __name__=="__main__":
     plot_dimensional_model_on_dataset(dim_model,dim_scaler_X,dim_scaler_label,data_folder)
     fig1.set_size_inches(6.5,6)
     fig1.tight_layout()
-    fig1.savefig("")
+    fig1.savefig(figname)
+    fig1.show()
     
