@@ -427,6 +427,9 @@ def train_dimensional_model(save_folder_prefix="",data_folder='./data/training',
         if epoch % 5 == 0 or epoch == 1:
             print(f"Epoch [{epoch:02d}/{epochs:02d}] - Train Loss: {epoch_train_loss:.6f} | Val Loss: {epoch_val_loss:.6f}")
 
+    to_save={"state_dict":model.state_dict(),"scaler_X":scaler_X,"scaler_label":scaler_Y}
+    with open(os.path.join(outfolder,"model.pkl"),"wb") as fh:
+        pickle.dump(to_save,fh)
     # 6. Model Performance Evaluation (Unscaled Metrics)
     pred_Fa_reconstructed,rmse_force,percent_error=validate_model(model,scaler_Y,X_val_scaled,Y_val,device)
     with open(os.path.join(outfolder,"validation.txt"),"wt") as fh:
