@@ -149,7 +149,7 @@ def load_and_nondimensionalize_data(rotor_radius,pwm_hover,data_folder: str = 'd
             q_factor = np.ones(3)#RHO * v_inf*v_rel_local * (rotor_radius ** 2)
 
             # Feature vector: [pwm/pwm_hover (4), Re (3), q_factor (3)] -> total 10 features
-            x_nondim = np.concatenate([pwm/pwm_hover,reynolds_num,q_factor])
+            x_nondim = np.concatenate([pwm/pwm_hover,reynolds_num])#,q_factor])
 
 
             c_f = fa_local / q_factor
@@ -183,7 +183,7 @@ class NonDimFFNN(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         C_f= self.net(x[...,:7])
-        return C_f*x[...,7:]#predict actual force but network just learns C_f
+        return C_f#*x[...,7:]#predict actual force but network just learns C_f
 
 def train_model(rotor_radius,pwm_hover,save_folder_prefix="",data_folder='./data/training',epochs=40, random_seed=42):
     outfolder=utils.make_timestamped_folder("train_pi_groups",save_folder_prefix)
