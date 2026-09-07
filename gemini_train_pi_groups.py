@@ -146,7 +146,7 @@ def load_and_nondimensionalize_data(rotor_radius,pwm_hover,data_folder: str = 'd
             w_hat = w_wind_local / v_rel_local
 
             # Non-dimensional force coefficient vector C_f
-            q_factor = 1#RHO * v_inf*v_rel_local * (rotor_radius ** 2)
+            q_factor = np.ones(3)#RHO * v_inf*v_rel_local * (rotor_radius ** 2)
 
             # Feature vector: [pwm/pwm_hover (4), Re (3), q_factor (3)] -> total 10 features
             x_nondim = np.concatenate([pwm/pwm_hover,reynolds_num,q_factor])
