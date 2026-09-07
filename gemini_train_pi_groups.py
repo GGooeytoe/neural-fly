@@ -16,6 +16,7 @@ import utils
 RHO = 1.225            # Air density (kg/m^3)
 MU = 1.81e-5           # Dynamic viscosity of air (Pa*s)
 ROTOR_RADIUS = {"neural-fly":0.1397,"intel":0.115}   # Rotor radius R (meters)
+PWM_HOVER = {"neural-fly":910,"intel":1675}
 K_PWM_TO_RADS = 1.0    # TODO: what is this for the drones? Approximate PWM scale factor to rad/s (Omega = k * PWM)
 EPSILON = 1e-4         # Small constant to prevent division by zero
 
@@ -96,7 +97,7 @@ def load_and_preprocess_data(data_folder: str = 'data/experiment'):
     print(f"Input features shape: {X.shape} | Target force shape: {Y.shape}")
     return X, Y
 
-def load_and_nondimensionalize_data(rotor_radius,data_folder: str = 'data/experiment'):
+def load_and_nondimensionalize_data(rotor_radius,pwm_hover,data_folder: str = 'data/experiment'):
     """
     Loads experiment data and extracts non-dimensional parameters:
     Inputs:
@@ -147,8 +148,8 @@ def load_and_nondimensionalize_data(rotor_radius,data_folder: str = 'data/experi
             # Non-dimensional force coefficient vector C_f
             q_factor = RHO * v_inf*v_rel_local * (rotor_radius ** 2)
 
-            # Feature vector: [pwm (4), Re (3), q_factor (3)] -> total 10 features
-            x_nondim = np.concatenate([pwm,reynolds_num,q_factor])
+            # Feature vector: [pwm/pwm_hover (4), Re (3), q_factor (3)] -> total 10 features
+            x_nondim = np.concatenate([pwm/pwm_hover,reynolds_num,q_factor])
 
 
             c_f = fa_local / q_factor
@@ -184,7 +185,7 @@ class NonDimFFNN(nn.Module):
         C_f= self.net(x[...,:7])
         return C_f*x[...,7:]#predict actual force but network just learns C_f
 
-def train_model(rotor_radius,save_folder_prefix="",data_folder='./data/training',epochs=40, random_seed=42):
+def train_model(rotor_radius,pwm_hover,save_folder_prefix="",data_folder='./data/training',epochs=40, random_seed=42):
     outfolder=utils.make_timestamped_folder("train_pi_groups",save_folder_prefix)
     print(f"Saving in {outfolder}")
     utils.write_README(outfolder,data_folder=data_folder,epochs=epochs,random_seed=random_seed)
@@ -195,7 +196,7 @@ def train_model(rotor_radius,save_folder_prefix="",data_folder='./data/training'
     np.random.seed(random_seed)
 
     # 1. Load non-dimensionalized dataset
-    X, C_f, Q, Y_raw = load_and_nondimensionalize_data(rotor_radius,data_folder)
+    X, C_f, Q, Y_raw = load_and_nondimensionalize_data(rotor_radius,pwm_hover,data_folder)
 
     # 2. Train-Validation Split
     indices = np.arange(len(X))
@@ -498,8 +499,8 @@ def test_model(model,scaler_X,scaler_label,X_raw,Y_raw):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     return validate_model(model,scaler_label,X_scaled,Y_raw,device)
 
-def test_model_on_dataset(model,scaler_X,scaler_label,data_folder,rotor_radius):
-    X, C_f, Q, Y_raw = load_and_nondimensionalize_data(rotor_radius,data_folder)
+def test_model_on_dataset(model,scaler_X,scaler_label,data_folder,rotor_radius,pwm_hover):
+    X, C_f, Q, Y_raw = load_and_nondimensionalize_data(rotor_radius,pwm_hover,data_folder)
     return test_model(model,scaler_X,scaler_label,X,Y_raw)
 
 def test_dimensional_model_on_dataset(model,scaler_X,scaler_label,data_folder):
@@ -511,4 +512,4 @@ if __name__ == '__main__':
         save_folder_prefix=sys.argv[1]
     else:
         save_folder_prefix="train_pi_groups"
-    train_model(rotor_radius=ROTOR_RADIUS["neural-fly"],save_folder_prefix=save_folder_prefix,data_folder="./data/training")
+    train_model(rotor_radius=ROTOR_RADIUS["neural-fly"],pwm_hover=PWM_HOVER["neural-fly"],save_folder_prefix=save_folder_prefix,data_folder="./data/training")
