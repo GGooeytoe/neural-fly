@@ -3,7 +3,10 @@ import gemini_train_pi_groups
 from matplotlib import pyplot
 import pickle
 
-def plot_predicted_versus_actual(X,Y,model,scaler_X,scaler_label,axes,name,plot_truth=True):
+def plot_predicted_versus_actual(X,Y,model,scaler_X,scaler_label,axes,name,plot_truth=True,interval=None):
+    if interval is not None:
+        X=X[interval[0]:interval[1]]
+        Y=Y[interval[0]:interval[1]]
     X_scaled=scaler_X.transform(X)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     pred_Fa_reconstructed,rmse_force,percent_error=gemini_train_pi_groups.validate_model(model,scaler_label,X_scaled,Y,device)
@@ -16,13 +19,13 @@ def plot_predicted_versus_actual(X,Y,model,scaler_X,scaler_label,axes,name,plot_
         ax.set_xlabel("Sample")
         ax.legend()
 
-def plot_model_on_dataset(model,scaler_X,scaler_label,data_folder,rotor_radius,pwm_hover,axes,plot_truth=True):
+def plot_model_on_dataset(model,scaler_X,scaler_label,data_folder,rotor_radius,pwm_hover,axes,plot_truth=True,interval=None):
     X, C_f, Q, Y_raw = gemini_train_pi_groups.load_and_nondimensionalize_data(rotor_radius,pwm_hover,data_folder)
-    plot_predicted_versus_actual(X,Y_raw,model,scaler_X,scaler_label,axes,"Nondim",plot_truth)
+    plot_predicted_versus_actual(X,Y_raw,model,scaler_X,scaler_label,axes,"Nondim",plot_truth,interval=interval)
 
-def plot_dimensional_model_on_dataset(model,scaler_X,scaler_label,data_folder,axes,plot_truth=True):
+def plot_dimensional_model_on_dataset(model,scaler_X,scaler_label,data_folder,axes,plot_truth=True,interval=None):
     X, Y_raw = gemini_train_pi_groups.load_and_preprocess_data(data_folder)
-    plot_predicted_versus_actual(X,Y_raw,model,scaler_X,scaler_label,axes,"Dim",plot_truth)
+    plot_predicted_versus_actual(X,Y_raw,model,scaler_X,scaler_label,axes,"Dim",plot_truth,interval=interval)
 
 def load_model(pickle_path,model_obj):
     with open(pickle_path,"rb") as fh:
@@ -37,6 +40,7 @@ if __name__=="__main__":
     dim_model_path="train_dimensional/train100epochs_and_save20260907_161346/model.pkl"
     data_folder="data/training-transfer"
     data_drone="intel"
+    interval=(0,5000)
     rotor_radius=gemini_train_pi_groups.ROTOR_RADIUS[data_drone]
     pwm_hover=gemini_train_pi_groups.PWM_HOVER[data_drone]
     import time
@@ -52,8 +56,8 @@ if __name__=="__main__":
 
     fig1=pyplot.figure()
     axes1=fig1.subplots(3,2)
-    plot_model_on_dataset(nondim_model,nondim_scaler_X,nondim_scaler_label,data_folder,rotor_radius,pwm_hover,axes1[:,0])
-    plot_dimensional_model_on_dataset(dim_model,dim_scaler_X,dim_scaler_label,data_folder,axes1[:,1])
+    plot_model_on_dataset(nondim_model,nondim_scaler_X,nondim_scaler_label,data_folder,rotor_radius,pwm_hover,axes1[:,0],interval=interval)
+    plot_dimensional_model_on_dataset(dim_model,dim_scaler_X,dim_scaler_label,data_folder,axes1[:,1],interval=interval)
     fig1.set_size_inches(6.5,6)
     fig1.tight_layout()
     import os
@@ -62,8 +66,8 @@ if __name__=="__main__":
 
     fig2=pyplot.figure()
     axes2=fig2.subplots(3,1)
-    plot_model_on_dataset(nondim_model,nondim_scaler_X,nondim_scaler_label,data_folder,rotor_radius,pwm_hover,axes2)
-    plot_dimensional_model_on_dataset(dim_model,dim_scaler_X,dim_scaler_label,data_folder,axes2,plot_truth=False)
+    plot_model_on_dataset(nondim_model,nondim_scaler_X,nondim_scaler_label,data_folder,rotor_radius,pwm_hover,axes2,interval=interval)
+    plot_dimensional_model_on_dataset(dim_model,dim_scaler_X,dim_scaler_label,data_folder,axes2,plot_truth=False,interval=interval)
     fig2.set_size_inches(6.5,6)
     fig2.tight_layout()
     fig2.savefig(os.path.join(fig_folder,"one_column.png"))
