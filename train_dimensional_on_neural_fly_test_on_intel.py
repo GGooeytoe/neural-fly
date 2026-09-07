@@ -1,6 +1,7 @@
 import gemini_train_pi_groups
 import os
-model,scaler_X,scaler_label,outfolder=gemini_train_pi_groups.train_dimensional_model(save_folder_prefix="train_and_save",data_folder="./data/training")
+epochs=100
+model,scaler_X,scaler_label,outfolder=gemini_train_pi_groups.train_dimensional_model(save_folder_prefix=f"train{epochs}epochs_and_save",data_folder="./data/training",epochs=epochs)
 pred,rmse,percent=gemini_train_pi_groups.test_dimensional_model_on_dataset(model,scaler_X,scaler_label,"./data/training-transfer/")
 
 with open(os.path.join(outfolder,"test_on_intel.txt"),"wt") as fh:
