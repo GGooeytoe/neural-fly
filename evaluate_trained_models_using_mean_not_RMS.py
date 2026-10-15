@@ -28,7 +28,7 @@ def validate_model(model,scaler_X,scaler_label,X_val,Y_val_raw,device):
     print(f"Force Y (f_ay): {mean_force_err[1]:.4f} N")
     print(f"Force Z (f_az): {mean_force_err[2]:.4f} N")
 
-    percent_error = np.mean(np.abs(pred_Fa_reconstructed-Y_val_raw)/np.abs(Y_val_raw), axis=0)
+    percent_error = np.mean(np.abs(pred_Fa_reconstructed-Y_val_raw)/np.abs(Y_val_raw), axis=0)*100
 
     print("\n--- Validation Performance Mean Absolute(Error)/Absolute(Truth) ---")
     print(f"Force X (f_ax): {percent_error[0]:.4f}%")

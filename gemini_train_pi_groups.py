@@ -489,7 +489,7 @@ def validate_model(model,scaler_label,X_val_scaled,Y_val_raw,device):
     print(f"Force Y (f_ay): {rmse_force[1]:.4f} N")
     print(f"Force Z (f_az): {rmse_force[2]:.4f} N")
 
-    percent_error = np.sqrt(np.mean(((pred_Fa_reconstructed-Y_val_raw)/Y_val_raw)**2, axis=0))
+    percent_error = np.sqrt(np.mean(((pred_Fa_reconstructed-Y_val_raw)/Y_val_raw)**2, axis=0))*100
 
     print("\n--- Validation Performance RMS(Error/Truth) ---")
     print(f"Force X (f_ax): {percent_error[0]:.4f}%")
