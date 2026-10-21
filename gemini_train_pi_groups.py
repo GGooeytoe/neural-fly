@@ -483,13 +483,13 @@ def validate_model(model,scaler_label,X_val_scaled,Y_val_raw,device):
     # Reconstruct Physical Aerodynamic Force: f_a = C_f * (rho * V_inf^2 * R^2)
     # pred_Fa_reconstructed = np.array([pred_Cf[i] * Q_val[i] for i in range(len(pred_Cf))])
 
-    rmse_force = np.abs(np.mean((Y_val_raw - pred_Fa_reconstructed), axis=0))
+    rmse_force = np.sqrt(np.mean((Y_val_raw - pred_Fa_reconstructed)**2, axis=0))
     print("\n--- Physical Aerodynamic Force Validation (Unscaled RMSE) ---")
     print(f"Force X (f_ax): {rmse_force[0]:.4f} N")
     print(f"Force Y (f_ay): {rmse_force[1]:.4f} N")
     print(f"Force Z (f_az): {rmse_force[2]:.4f} N")
 
-    percent_error = np.abs(np.mean(((pred_Fa_reconstructed-Y_val_raw)/Y_val_raw), axis=0))
+    percent_error = np.sqrt(np.mean(((pred_Fa_reconstructed-Y_val_raw)/Y_val_raw)**2, axis=0))
 
     print("\n--- Validation Performance RMS(Error/Truth) ---")
     print(f"Force X (f_ax): {percent_error[0]:.4f}%")

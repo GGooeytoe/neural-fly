@@ -1,0 +1,5 @@
+commit: d71fb6efbf582226ea73558b545840b0a44b53aa nondim_wyat
+commit message: Changed RMS to abs in gemini_train_pi_groups.validate_model
+data_folder: ./data/training
+epochs: 100
+random_seed: 42

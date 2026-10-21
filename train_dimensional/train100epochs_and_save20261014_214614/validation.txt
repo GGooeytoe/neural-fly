@@ -1,0 +1,9 @@
+--- Physical Aerodynamic Force Validation (Unscaled RMSE) ---
+Force X (f_ax): 0.0055 N
+Force Y (f_ay): 0.0010 N
+Force Z (f_az): 0.0208 N
+
+--- Validation Performance RMS(Error/Truth) ---
+Force X (f_ax): 0.0233%
+Force Y (f_ay): 0.3199%
+Force Z (f_az): 5.5374%

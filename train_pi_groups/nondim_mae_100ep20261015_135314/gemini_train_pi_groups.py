@@ -1,0 +1,518 @@
+import os
+import re
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import TensorDataset, DataLoader
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+import matplotlib.pyplot as plt
+import pickle
+# Import the repository's helper module
+import utils
+
+# Physical and Geometric Constants
+RHO = 1.225            # Air density (kg/m^3)
+MU = 1.81e-5           # Dynamic viscosity of air (Pa*s)
+ROTOR_RADIUS = {"neural-fly":0.1397,"intel":0.115}   # Rotor radius R (meters)
+PWM_HOVER = {"neural-fly":910,"intel":1675}
+K_PWM_TO_RADS = 1.0    # TODO: what is this for the drones? Approximate PWM scale factor to rad/s (Omega = k * PWM)
+EPSILON = 1e-4         # Small constant to prevent division by zero
+
+WIND_SPEED_MAP = {
+    'nowind': 0.0,
+    '10wind': 1.3,
+    '20wind': 2.5,
+    '30wind': 3.7,
+    '35wind': 4.2,
+    '40wind': 4.9,
+    '50wind': 6.1,
+    '70wind': 8.5,
+    '70p20sint': 8.5,
+    '100wind': 12.1
+}
+
+def parse_wind_speed(condition_str: str) -> float:
+    """Extracts wind speed magnitude in world x-direction."""
+    for key, val in WIND_SPEED_MAP.items():
+        if key in condition_str.lower():
+            return val
+    match = re.search(r'(\d+)wind', condition_str.lower())
+    if match:
+        return float(match.group(1)) * 0.121
+    return 0.0
+
+def load_and_preprocess_data(data_folder: str = 'data/experiment'):
+    """
+    Loads Neural-Fly experiment data and converts world frame variables 
+    to the drone's local body frame. Use for dimensional training as opposed to nondimensionalized
+    
+    Returns:
+        X: Inputs [local_wind (3), local_velocity (3), pwm (4)] -> Shape (N, 10)
+        Y: Target [local_aerodynamic_force (3)]             -> Shape (N, 3)
+    """
+    print(f"Loading data from '{data_folder}'...")
+    raw_data = utils.load_data(folder=data_folder)
+    print(f"Loaded {len(raw_data)} experiment runs.")
+
+    X_list, Y_list = [], []
+
+    for exp in raw_data:
+        # Get world-frame wind vector [vx, vy, vz]
+        v_wind_mag = parse_wind_speed(exp.get('condition', 'nowind'))
+        w_world_vec = np.array([-v_wind_mag, 0.0, 0.0])
+
+        num_timesteps = len(exp['t'])
+
+        for t in range(num_timesteps):
+            # Extract rotation matrix R (Body -> World frame)
+            R = exp['R'][t]
+            if R.shape == (9,):
+                R = R.reshape(3, 3)
+            
+            # Transpose of R maps World frame -> Body (Local) frame
+            R_T = R.T  
+
+            # Extract world frame quantities & motor PWM
+            v_world = exp['v'][t]          # Drone velocity in world frame (3D)
+            fa_world = exp['fa'][t]        # Aerodynamic force in world frame (3D)
+            pwm = exp['pwm'][t]            # Motor PWM commands (4D)
+
+            # Transform vectors to local frame
+            w_local = R_T @ w_world_vec    # Local wind speed vector (3D)
+            v_local = R_T @ v_world        # Local drone velocity vector (3D)
+            fa_local = R_T @ fa_world      # Local aerodynamic force vector (3D)
+
+            # Feature vector: [wind_local (3), v_local (3), pwm (4)]
+            x_feat = np.concatenate([w_local, v_local, pwm])
+
+            X_list.append(x_feat)
+            Y_list.append(fa_local)
+
+    X = np.array(X_list, dtype=np.float32)
+    Y = np.array(Y_list, dtype=np.float32)
+
+    print(f"Dataset compiled successfully.")
+    print(f"Input features shape: {X.shape} | Target force shape: {Y.shape}")
+    return X, Y
+
+def load_and_nondimensionalize_data(rotor_radius,pwm_hover,data_folder: str = 'data/experiment'):
+    """
+    Loads experiment data and extracts non-dimensional parameters:
+    Inputs:
+      - Tip speed ratios (lambda_1, lambda_2, lambda_3, lambda_4)
+      - Body Reynolds number (Re)
+      - Normalized relative velocity vector direction (v_hat_x, v_hat_y, v_hat_z)
+    Output:
+      - Quadratic drag force coefficient vector (C_f = f_a / (rho * V_inf^2 * R^2))
+    """
+    print(f"Loading data from '{data_folder}'...")
+    raw_data = utils.load_data(folder=data_folder)
+
+    X_list, C_f_list, dynamic_pressures_list, raw_forces_list = [], [], [], []
+
+    for exp in raw_data:
+        v_wind_mag = parse_wind_speed(exp.get('condition', 'nowind'))
+        w_world_vec = np.array([-v_wind_mag, 0.0, 0.0])#from figure 3A in the neural fly paper, the wind is in the -x direction
+        num_timesteps = len(exp['t'])
+
+        for t in range(num_timesteps):
+            R_mat = exp['R'][t]
+            if R_mat.shape == (9,):
+                R_mat = R_mat.reshape(3, 3)
+            R_T = R_mat.T
+
+            # Velocities & forces in local frame
+            v_drone_local = R_T @ exp['v'][t]
+            w_wind_local = R_T @ w_world_vec
+            fa_local = R_T @ exp['fa'][t]
+            pwm = exp['pwm'][t]
+
+            # Relative free-stream velocity vector
+            v_rel_local = w_wind_local - v_drone_local
+            v_inf = np.linalg.norm(v_rel_local) + EPSILON
+
+            # 1. Tip speed ratios (v_tip / V_inf)
+            omega = pwm * K_PWM_TO_RADS
+            v_tip = omega * rotor_radius
+            lambda_tip = v_tip / v_inf
+
+            # 2. Body Reynolds number (Re = rho * V_rel * 2R / mu)
+            reynolds_num = (RHO * v_rel_local * (2.0 * rotor_radius)) / MU
+
+            # 3. Normalized relative velocity direction vector
+            v_hat = v_rel_local / v_rel_local
+            w_hat = w_wind_local / v_rel_local
+
+            # Non-dimensional force coefficient vector C_f
+            q_factor = np.ones(3)#RHO * v_inf*v_rel_local * (rotor_radius ** 2)
+
+            # Feature vector: [pwm/pwm_hover (4), Re (3), q_factor (3)] -> total 10 features
+            x_nondim = np.concatenate([pwm/pwm_hover,reynolds_num])#,q_factor])
+
+
+            c_f = fa_local / q_factor
+
+            X_list.append(x_nondim)
+            C_f_list.append(c_f)
+            dynamic_pressures_list.append(q_factor)
+            raw_forces_list.append(fa_local)
+
+    X = np.array(X_list, dtype=np.float32)
+    C_f = np.array(C_f_list, dtype=np.float32)
+    Q = np.array(dynamic_pressures_list, dtype=np.float32)
+    Y_raw = np.array(raw_forces_list, dtype=np.float32)
+
+    print(f"Dataset compiled successfully.")
+    print(f"Non-dimensional Inputs Shape: {X.shape} | Force Coefficient Output Shape: {C_f.shape}")
+    return X, C_f, Q, Y_raw
+
+class NonDimFFNN(nn.Module):
+    def __init__(self, input_dim: int = 8, hidden_dim: int = 64, output_dim: int = 3):
+        super(NonDimFFNN, self).__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.SiLU(),
+            nn.Linear(hidden_dim // 2, output_dim)
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        C_f= self.net(x[...,:7])
+        return C_f#*x[...,7:]#predict actual force but network just learns C_f
+
+def train_model(rotor_radius,pwm_hover,save_folder_prefix="",data_folder='./data/training',epochs=40, random_seed=42):
+    outfolder=utils.make_timestamped_folder("train_pi_groups",save_folder_prefix)
+    print(f"Saving in {outfolder}")
+    utils.write_README(outfolder,data_folder=data_folder,epochs=epochs,random_seed=random_seed)
+    import shutil
+    shutil.copy(__file__,os.path.join(outfolder,os.path.basename(__file__)))
+    # Set random seed for reproducibility
+    torch.manual_seed(random_seed)
+    np.random.seed(random_seed)
+
+    # 1. Load non-dimensionalized dataset
+    X, C_f, Q, Y_raw = load_and_nondimensionalize_data(rotor_radius,pwm_hover,data_folder)
+
+    # 2. Train-Validation Split
+    indices = np.arange(len(X))
+    idx_train, idx_val = train_test_split(indices, test_size=0.2, random_state=random_seed)
+    labels=Y_raw
+
+    X_train, X_val = X[idx_train], X[idx_val]
+    label_train, label_val = labels[idx_train], labels[idx_val]
+    Q_val = Q[idx_val,...]
+    Y_val_raw = Y_raw[idx_val]
+
+    # 3. Standardize Non-Dimensional Inputs and Outputs
+    scaler_X = StandardScaler()
+    scaler_label = StandardScaler()
+
+    X_train_scaled = scaler_X.fit_transform(X_train)
+    X_val_scaled = scaler_X.transform(X_val)
+
+    label_train_scaled = scaler_label.fit_transform(label_train)
+    label_val_scaled = scaler_label.transform(label_val)
+
+    # PyTorch DataLoaders
+    train_dataset = TensorDataset(
+        torch.tensor(X_train_scaled, dtype=torch.float32),
+        torch.tensor(label_train_scaled, dtype=torch.float32)
+    )
+    val_dataset = TensorDataset(
+        torch.tensor(X_val_scaled, dtype=torch.float32),
+        torch.tensor(label_val_scaled, dtype=torch.float32)
+    )
+
+    train_loader = DataLoader(train_dataset, batch_size=256, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=256, shuffle=False)
+
+    # 4. Model Setup
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Training on device: {device}\n")
+
+    model = NonDimFFNN(input_dim=X.shape[1], hidden_dim=64, output_dim=label_train.shape[1]).to(device)
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
+
+    # 5. Training Loop
+    train_losses, val_losses = [], []
+
+    for epoch in range(1, epochs + 1):
+        model.train()
+        running_train_loss = 0.0
+
+        for batch_x, batch_y in train_loader:
+            batch_x, batch_y = batch_x.to(device), batch_y.to(device)
+
+            optimizer.zero_grad()
+            preds = model(batch_x)
+            loss = criterion(preds, batch_y)
+            loss.backward()
+            optimizer.step()
+
+            running_train_loss += loss.item() * batch_x.size(0)
+
+        epoch_train_loss = running_train_loss / len(train_dataset)
+        train_losses.append(epoch_train_loss)
+
+        # Validation Step
+        model.eval()
+        running_val_loss = 0.0
+        with torch.no_grad():
+            for batch_x, batch_y in val_loader:
+                batch_x, batch_y = batch_x.to(device), batch_y.to(device)
+                preds = model(batch_x)
+                loss = criterion(preds, batch_y)
+                running_val_loss += loss.item() * batch_x.size(0)
+
+        epoch_val_loss = running_val_loss / len(val_dataset)
+        val_losses.append(epoch_val_loss)
+
+        if epoch % 5 == 0 or epoch == 1:
+            print(f"Epoch [{epoch:02d}/{epochs:02d}] - Train Loss (Scaled C_f): {epoch_train_loss:.6f} | Val Loss: {epoch_val_loss:.6f}")
+    to_save={"state_dict":model.state_dict(),"scaler_X":scaler_X,"scaler_label":scaler_label}
+    with open(os.path.join(outfolder,"model.pkl"),"wb") as fh:
+        pickle.dump(to_save,fh)
+
+    # 6. Evaluation: Convert predicted drag coefficients back to physical forces (Newtons)
+    pred_Fa_reconstructed,rmse_force,percent_error=validate_model(model,scaler_label,X_val_scaled,Y_val_raw,device)
+
+    with open(os.path.join(outfolder,"validation.txt"),"wt") as fh:
+        fh.write("--- Physical Aerodynamic Force Validation (Unscaled RMSE) ---\n")
+        fh.write(f"Force X (f_ax): {rmse_force[0]:.4f} N\n")
+        fh.write(f"Force Y (f_ay): {rmse_force[1]:.4f} N\n")
+        fh.write(f"Force Z (f_az): {rmse_force[2]:.4f} N\n")
+        fh.write("\n--- Validation Performance RMS(Error/Truth) ---\n")
+        fh.write(f"Force X (f_ax): {percent_error[0]:.4f}%\n")
+        fh.write(f"Force Y (f_ay): {percent_error[1]:.4f}%\n")
+        fh.write(f"Force Z (f_az): {percent_error[2]:.4f}%\n")
+
+    # 7. Visualizations
+    plt.figure(figsize=(12, 5))
+
+    plt.subplot(1, 2, 1)
+    plt.plot(train_losses, label='Train Loss')
+    plt.plot(val_losses, label='Validation Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('MSE Loss (Scaled C_f)')
+    plt.title('Non-Dimensional Model Loss')
+    plt.legend()
+    plt.grid(True)
+
+    plt.subplot(1, 2, 2)
+    sample_indices = np.arange(150)
+    plt.plot(Y_val_raw[sample_indices, 0], 'r--', label='True f_ax')
+    plt.plot(pred_Fa_reconstructed[sample_indices, 0], 'r-', label='Pred f_ax')
+    plt.plot(Y_val_raw[sample_indices, 1], 'g--', label='True f_ay')
+    plt.plot(pred_Fa_reconstructed[sample_indices, 1], 'g-', label='Pred f_ay')
+    plt.plot(Y_val_raw[sample_indices, 2], 'b--', label='True f_az')
+    plt.plot(pred_Fa_reconstructed[sample_indices, 2], 'b-', label='Pred f_az')
+    plt.xlabel('Sample Index')
+    plt.ylabel('Reconstructed Force (N)')
+    plt.title('Reconstructed Physical Force vs Ground Truth')
+    plt.legend()
+    plt.grid(True)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(outfolder,'nondimensional_neural_fly_results.png'))
+
+    return model,scaler_X,scaler_label,outfolder
+
+
+# Define Simple Feedforward Neural Network
+class FeedforwardNN(nn.Module):
+    def __init__(self, input_dim: int = 10, hidden_dim: int = 64, output_dim: int = 3):
+        super(FeedforwardNN, self).__init__()
+        self.net = nn.Sequential(
+                    nn.Linear(input_dim, hidden_dim),
+                    nn.SiLU(),
+                    nn.Linear(hidden_dim, hidden_dim),
+                    nn.SiLU(),
+                    nn.Linear(hidden_dim, hidden_dim // 2),
+                    nn.SiLU(),
+                    nn.Linear(hidden_dim // 2, output_dim)
+                )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.net(x)
+
+def train_dimensional_model(save_folder_prefix="",data_folder='./data/training',epochs=40, random_seed=42):
+    outfolder=utils.make_timestamped_folder("train_dimensional",save_folder_prefix)
+    print(f"Saving in {outfolder}")
+    utils.write_README(outfolder,data_folder=data_folder,epochs=epochs,random_seed=random_seed)
+    import shutil
+    shutil.copy(__file__,os.path.join(outfolder,os.path.basename(__file__)))
+    # Set random seed for reproducibility
+    torch.manual_seed(random_seed)
+    np.random.seed(random_seed)
+
+    # 1. Load and process dataset
+    X, Y = load_and_preprocess_data(data_folder)
+
+    # 2. Train-Validation Split (80% Train, 20% Validation)
+    X_train, X_val, Y_train, Y_val = train_test_split(
+        X, Y, test_size=0.2, random_state=random_seed
+    )
+
+    # 3. Standardize inputs and targets
+    scaler_X = StandardScaler()
+    scaler_Y = StandardScaler()
+
+    X_train_scaled = scaler_X.fit_transform(X_train)
+    X_val_scaled = scaler_X.transform(X_val)
+
+    Y_train_scaled = scaler_Y.fit_transform(Y_train)
+    Y_val_scaled = scaler_Y.transform(Y_val)
+
+    # PyTorch DataLoaders
+    train_dataset = TensorDataset(
+        torch.tensor(X_train_scaled, dtype=torch.float32),
+        torch.tensor(Y_train_scaled, dtype=torch.float32)
+    )
+    val_dataset = TensorDataset(
+        torch.tensor(X_val_scaled, dtype=torch.float32),
+        torch.tensor(Y_val_scaled, dtype=torch.float32)
+    )
+
+    train_loader = DataLoader(train_dataset, batch_size=256, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=256, shuffle=False)
+
+    # 4. Initialize Network, Loss Function, and Optimizer
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Training on device: {device}\n")
+
+    model = FeedforwardNN(input_dim=10, hidden_dim=64, output_dim=3).to(device)
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
+
+    # 5. Training Loop
+    train_losses, val_losses = [], []
+
+    for epoch in range(1, epochs + 1):
+        model.train()
+        running_train_loss = 0.0
+
+        for batch_x, batch_y in train_loader:
+            batch_x, batch_y = batch_x.to(device), batch_y.to(device)
+
+            optimizer.zero_grad()
+            preds = model(batch_x)
+            loss = criterion(preds, batch_y)
+            loss.backward()
+            optimizer.step()
+
+            running_train_loss += loss.item() * batch_x.size(0)
+
+        epoch_train_loss = running_train_loss / len(train_dataset)
+        train_losses.append(epoch_train_loss)
+
+        # Validation step
+        model.eval()
+        running_val_loss = 0.0
+        with torch.no_grad():
+            for batch_x, batch_y in val_loader:
+                batch_x, batch_y = batch_x.to(device), batch_y.to(device)
+                preds = model(batch_x)
+                loss = criterion(preds, batch_y)
+                running_val_loss += loss.item() * batch_x.size(0)
+
+        epoch_val_loss = running_val_loss / len(val_dataset)
+        val_losses.append(epoch_val_loss)
+
+        if epoch % 5 == 0 or epoch == 1:
+            print(f"Epoch [{epoch:02d}/{epochs:02d}] - Train Loss: {epoch_train_loss:.6f} | Val Loss: {epoch_val_loss:.6f}")
+
+    to_save={"state_dict":model.state_dict(),"scaler_X":scaler_X,"scaler_label":scaler_Y}
+    with open(os.path.join(outfolder,"model.pkl"),"wb") as fh:
+        pickle.dump(to_save,fh)
+    # 6. Model Performance Evaluation (Unscaled Metrics)
+    pred_Fa_reconstructed,rmse_force,percent_error=validate_model(model,scaler_Y,X_val_scaled,Y_val,device)
+    with open(os.path.join(outfolder,"validation.txt"),"wt") as fh:
+        fh.write("--- Physical Aerodynamic Force Validation (Unscaled RMSE) ---\n")
+        fh.write(f"Force X (f_ax): {rmse_force[0]:.4f} N\n")
+        fh.write(f"Force Y (f_ay): {rmse_force[1]:.4f} N\n")
+        fh.write(f"Force Z (f_az): {rmse_force[2]:.4f} N\n")
+        fh.write("\n--- Validation Performance RMS(Error/Truth) ---\n")
+        fh.write(f"Force X (f_ax): {percent_error[0]:.4f}%\n")
+        fh.write(f"Force Y (f_ay): {percent_error[1]:.4f}%\n")
+        fh.write(f"Force Z (f_az): {percent_error[2]:.4f}%\n")
+
+    # 7. Visualization
+    plt.figure(figsize=(12, 5))
+
+    plt.subplot(1, 2, 1)
+    plt.plot(train_losses, label='Train Loss')
+    plt.plot(val_losses, label='Validation Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('MSE Loss (Scaled f)')
+    plt.title('Dimensional Model Loss')
+    plt.legend()
+    plt.grid(True)
+
+    plt.subplot(1, 2, 2)
+    sample_indices = np.arange(150)
+    plt.plot(Y_val[sample_indices, 0], 'r--', label='True f_ax')
+    plt.plot(pred_Fa_reconstructed[sample_indices, 0], 'r-', label='Pred f_ax')
+    plt.plot(Y_val[sample_indices, 1], 'g--', label='True f_ay')
+    plt.plot(pred_Fa_reconstructed[sample_indices, 1], 'g-', label='Pred f_ay')
+    plt.plot(Y_val[sample_indices, 2], 'b--', label='True f_az')
+    plt.plot(pred_Fa_reconstructed[sample_indices, 2], 'b-', label='Pred f_az')
+    plt.xlabel('Sample Index')
+    plt.ylabel('Reconstructed Force (N)')
+    plt.title('Reconstructed Physical Force vs Ground Truth')
+    plt.legend()
+    plt.grid(True)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(outfolder,'neural_fly_ffnn_results.png'))
+
+    return model,scaler_X,scaler_Y,outfolder
+
+def validate_model(model,scaler_label,X_val_scaled,Y_val_raw,device):
+    model.eval()
+    with torch.no_grad():
+        X_val_tensor = torch.tensor(X_val_scaled, dtype=torch.float32).to(device)
+        pred_f_scaled = model(X_val_tensor).cpu().numpy()
+        pred_Fa_reconstructed = scaler_label.inverse_transform(pred_f_scaled)
+
+    # Reconstruct Physical Aerodynamic Force: f_a = C_f * (rho * V_inf^2 * R^2)
+    # pred_Fa_reconstructed = np.array([pred_Cf[i] * Q_val[i] for i in range(len(pred_Cf))])
+
+    rmse_force = np.sqrt(np.mean((Y_val_raw - pred_Fa_reconstructed)**2, axis=0))
+    print("\n--- Physical Aerodynamic Force Validation (Unscaled RMSE) ---")
+    print(f"Force X (f_ax): {rmse_force[0]:.4f} N")
+    print(f"Force Y (f_ay): {rmse_force[1]:.4f} N")
+    print(f"Force Z (f_az): {rmse_force[2]:.4f} N")
+
+    percent_error = np.sqrt(np.mean(((pred_Fa_reconstructed-Y_val_raw)/Y_val_raw)**2, axis=0))
+
+    print("\n--- Validation Performance RMS(Error/Truth) ---")
+    print(f"Force X (f_ax): {percent_error[0]:.4f}%")
+    print(f"Force Y (f_ay): {percent_error[1]:.4f}%")
+    print(f"Force Z (f_az): {percent_error[2]:.4f}%")
+    return pred_Fa_reconstructed,rmse_force,percent_error
+
+def test_model(model,scaler_X,scaler_label,X_raw,Y_raw):
+    X_scaled=scaler_X.transform(X_raw)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    return validate_model(model,scaler_label,X_scaled,Y_raw,device)
+
+def test_model_on_dataset(model,scaler_X,scaler_label,data_folder,rotor_radius,pwm_hover):
+    X, C_f, Q, Y_raw = load_and_nondimensionalize_data(rotor_radius,pwm_hover,data_folder)
+    return test_model(model,scaler_X,scaler_label,X,Y_raw)
+
+def test_dimensional_model_on_dataset(model,scaler_X,scaler_label,data_folder):
+    X, Y = load_and_preprocess_data(data_folder)
+    return test_model(model,scaler_X,scaler_label,X,Y)
+if __name__ == '__main__':
+    import sys
+    if len(sys.argv)>1:
+        save_folder_prefix=sys.argv[1]
+    else:
+        save_folder_prefix="train_pi_groups"
+    train_model(rotor_radius=ROTOR_RADIUS["neural-fly"],pwm_hover=PWM_HOVER["neural-fly"],save_folder_prefix=save_folder_prefix,data_folder="./data/training")
